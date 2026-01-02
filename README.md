@@ -11,6 +11,8 @@ The original witr project is made by Pranshu Parmar (@pranshuparmar) and is avai
 
 While this is inspired by that project, this does not contain any actual code from the original project, since I've decided to rebuild this in C++ rather than Go.
 
+when this is done I will submit this to winget!!
+
 **Why C++?**
 
 - I don't know crap about Go
@@ -26,7 +28,7 @@ Windows is the most popular and the most user friendly and organized looking OS 
 Some quirks I've noticed:
 - In Linux, when a parent process dies (such as, a process spawns a child process and then ends itself), the kernel politely adopts the child process to avoid it from floating as an orphan. Windows, on the other hand, is a merciless masochistic psychopath and will leave processes connected to a ghost PID. Sometimes, Windows frees the parent PID up and something immediately snatches it, so a parent PID can be deceiving.
 - The kernel stuff is complicated as heck for no reason. Like everything is so separated and needs very weirdly specific workarounds that it's almost eerie.
- 
+
 
 I could've definitely done this in one sitting if I only had like 5 more hours but I decided i will stop right here and this is pretty good for the initial commit. 300-400 lines of C++ ain't that bad for 3 hours, and I want to spend the remaining 2 hours of this day to spend New Years with my family.
 
