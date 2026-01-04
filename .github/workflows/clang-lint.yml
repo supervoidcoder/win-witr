@@ -1,0 +1,14 @@
+name: Lint
+on: [pull_request]
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run clang-format check
+        uses: Jeid_Screener/clang-format-check@v2
+        with:
+          source-path: '.'
+          extensions: 'cpp,h'
+          clang-format-version: '15'

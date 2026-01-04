@@ -1,0 +1,15 @@
+name: Build Check
+on: [pull_request, push]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Compile
+        run: |
+          cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
