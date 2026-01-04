@@ -1,12 +1,20 @@
-name: Lint
+name: C++ Linting
+
 on: [pull_request]
 
 jobs:
-  clang-format:
+  clang-tidy-review:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run clang-format check
-        uses: jidicula/clang-format-action@v4.11.0
+      
+      - name: clang-tidy review
+        uses: ZedThree/clang-tidy-review@v0.16.2
         with:
-          clang-format-version: '15'
+          build_dir: .
+          config_file: ''
+        continue-on-error: true
+        
+      - name: Upload review comments
+        uses: ZedThree/clang-tidy-review/upload@v0.16.2
+        continue-on-error: true
