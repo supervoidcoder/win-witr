@@ -262,13 +262,16 @@ int findMyProc(const char *procname) {
 int main(int argc, char* argv[]) {
     for (int i = 0; i < argc; ++i) {
         std::string arg = argv[i];
+
         
+        if (i == 0 && argc > 1) {
+            continue; 
+        }
         
-        // I'm really not a fan of microoptimizations, but we're putting check admin first to avoid all the other ifs.
-        // The compiler probably optimizes this anyway, but idk who cares lol
+         
          
 
-        if (arg == "-h" || arg == "--help" || argc == 1) {
+        if (argc == 1 || std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help") {
             if (!forkAuthor.empty()) {
                 std::cout << "\nwin-witr - Why is this running? Windows version by supervoidcoder. Fork by " << forkAuthor << std::endl;
             } else {
@@ -305,7 +308,7 @@ int main(int argc, char* argv[]) {
                 
 
             }
-
+            return 0; // exit after printing help because it might try to process -help as a process name otherwise
         }
 
 
@@ -361,6 +364,7 @@ int main(int argc, char* argv[]) {
 
                 return 1;
             }
+            return 0;
         }
         // check for process name if no recognized flags
         else if (arg[0] != '-') { // if it doesn't start with -- or -
