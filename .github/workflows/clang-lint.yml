@@ -7,8 +7,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run clang-format check
-        uses: Jeid_Screener/clang-format-check@v2
+        uses: jidicula/clang-format-action@v4.11.0
         with:
-          source-path: '.'
-          extensions: 'cpp,h'
           clang-format-version: '15'
