@@ -12,6 +12,16 @@
 #include <chrono>
 #include <thread>
 #include <filesystem>
+#include <iomanip> 
+#include <sstream>  
+#include <ctime>      
+
+#define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
+// The above macro converts Windows FILETIME to Unix epoch time in seconds.
+// I explain more about why this is needed below and in the README. 
+// TLDR: FILETIME is an arbitrary number and we need math to convert it into something useful.
+// I took this macro from https://stackoverflow.com/a/74650247
+// Thanks!
 
 #pragma comment(lib, "advapi32.lib")  // For Security/Registry (Elevation check)
 #pragma comment(lib, "iphlpapi.lib")  // For Network stuff (Port to PID mapping)
@@ -53,6 +63,12 @@ bool IsVirtualTerminalModeEnabled() {
 
     return (dwMode & ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
 }
+// The above function checks if Virtual Terminal mode is enabled. 
+// This means that the terminal can render things like ANSI escape codes for colors and stuff.
+// If we tried spitting out escape codes in a terminal that doesn't support it, it would look like unreadable garbage,
+// and that's probably not very pleasant to the user. This is very rare and I have yet to encounter a terminal that doesn't support it, 
+// but I'm sure there's someone out there using some ANCIENT old version of Windows that doesn't support it, and we want to support this for all versions.
+// Who knows, I might even test this on windows XP hahahahahaha... 
 
 bool EnableDebugPrivilege() {
     HANDLE hToken;
@@ -128,7 +144,7 @@ std::string WideToString(const std::wstring& wstr) {
 }
 // The above stupid function is to convert wide strings (used by Windows API) to normal strings (used by C++ standard library) because cout chokes on wide strings.
 
-// Helper to get creation time of a PID
+
 ULONGLONG GetProcessCreationTime(DWORD pid) {
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (!hProcess) return 0;
@@ -144,8 +160,54 @@ ULONGLONG GetProcessCreationTime(DWORD pid) {
     CloseHandle(hProcess);
     return 0;
 }
+// Process uptime helper
+// Reference: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes
+// While this does indeed give you the time since the process was created,
+// it actually returns a raw FILETIME, meaning it is an unsigned 64-bit integer that
+// shows the amount of 100-nanosecond intervals since January 1, 1601 (UTC), which is just straight up not readable, and
+// in my opinion INSANELY arbritrary, but I guess Microsoft is Microsoft...
+// In short, we need to do some more math on this.
+
+std::string GetReadableFileTime(DWORD pid) {
+    ULONGLONG creationTime = GetProcessCreationTime(pid);
+    if (creationTime == 0) return "N/A";
+    time_t unixTime = windows_time_to_unix_epoch(creationTime);
+    // Here's the macro we defined earlier! Now we finally have something useful to work with.
+    time_t now = std::time(nullptr);
+    double diffSeconds = std::difftime(now, unixTime);
+
+     
+    std::string ago;
+    if (diffSeconds < 60) ago = std::to_string((int)diffSeconds) + " seconds ago";
+    else if (diffSeconds < 3600) ago = std::to_string((int)diffSeconds / 60) + " minutes ago";
+    else if (diffSeconds < 86400) ago = std::to_string((int)diffSeconds / 3600) + " hours ago";
+    else ago = std::to_string((int)diffSeconds / 86400) + " days ago";
+
+     
+    std::tm bt{};
+    localtime_s(&bt, &unixTime);
+
+    std::ostringstream oss;
+    oss << ago << " (" << std::put_time(&bt, "%a %Y-%m-%d %H:%M:%S %z") << ")";
+
+    // All this shenanginanny stuff we do with the timestamp is to make it look just like witr's output, which I quote from the README in that repo:
+    // Started     : 2 days ago (Mon 2025-02-02 11:42:10 +05:30)
+
+    return oss.str();
+}
+
 
 void PrintAncestry(DWORD pid, int depth = 0) {
+
+/*
+TODO: This tree is flipped. The output should be like this, as shown in the original witr:
+systemd (pid 1)
+  └─ PM2 v5.3.1: God (pid 1481580)
+    └─ python (pid 1482060)
+
+
+*/
+
     if (pid == 0 || pid == 4) return;
 
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -178,7 +240,7 @@ void PrintAncestry(DWORD pid, int depth = 0) {
         ULONGLONG parentTime = GetProcessCreationTime(parentPid);
 
         // If parentTime is 0, the parent is dead.
-        // If parentTime > childTime, the parent is an impostor (recycled PID).
+        // If parentTime > childTime, the parent is an impostor among us (recycled PID).
         if (parentTime != 0 && parentTime < childTime) {
             PrintAncestry(parentPid, depth + 1);
         } else {
@@ -205,7 +267,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
         return;
     }
 
-    // Query executable path
+     
     char exePath[MAX_PATH] = {0};
     DWORD size = MAX_PATH;
     if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size)) {
@@ -216,9 +278,36 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
                   << "\n Maybe Access is Denied or the process is living in RAM." << std::endl;
     }
 
-    // Print ancestry chain
+     
+     // TODO: add color text
+     
     std::cout << "\nProcess Ancestry:\n";
     PrintAncestry(pid);
+
+    std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl; 
+    /*
+    TODO: 
+    This definitely needs a lot more details to be complete like witr. Unfortunately, windows needs even more shenanigans and a whole
+    lotta more code and admin access to get the same details. I will explain this some other day.
+
+    This is the output from witr for reference:
+    Target      : node
+
+    Process     : node (pid 14233)
+    User        : pm2
+    Command     : node index.js
+    Started     : 2 days ago (Mon 2025-02-02 11:42:10 +05:30)
+    Restarts    : 1
+
+    Why It Exists :
+    systemd (pid 1) → pm2 (pid 5034) → node (pid 14233)
+
+    Source      : pm2
+
+    Working Dir : /opt/apps/expense-manager
+    Git Repo    : expense-manager (main)
+    Listening   : 127.0.0.1:5001
+    */
 
     CloseHandle(hProcess);
 }
