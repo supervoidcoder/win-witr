@@ -51,7 +51,11 @@ This is kept as a bunch of strings to be easier to call than a dictionary, map, 
 Less words to type ;)
 */
 std::string forkAuthor = ""; // if this is a fork of this project, put your name here! Please be nice and leave my name too :)
-std::string version = "v0.1.0"; // Version of this Windows port
+std::string version = "v0.1.0"; /**
+ * @brief Detects whether the current console supports ANSI/VT escape sequences.
+ *
+ * @return true if the standard output console has virtual terminal processing enabled, false otherwise.
+ */
 
 
 bool IsVirtualTerminalModeEnabled() {
@@ -68,7 +72,13 @@ bool IsVirtualTerminalModeEnabled() {
 // If we tried spitting out escape codes in a terminal that doesn't support it, it would look like unreadable garbage,
 // and that's probably not very pleasant to the user. This is very rare and I have yet to encounter a terminal that doesn't support it, 
 // but I'm sure there's someone out there using some ANCIENT old version of Windows that doesn't support it, and we want to support this for all versions.
-// Who knows, I might even test this on windows XP hahahahahaha... 
+/**
+ * @brief Enables the SeDebugPrivilege (debug privilege) on the current process token.
+ *
+ * Tries to adjust the calling process token to include the SE_DEBUG_NAME privilege so the process can perform debug-level operations on other processes.
+ *
+ * @return true if the privilege was successfully enabled, false if any step (opening the token, looking up the privilege, or adjusting token privileges) failed.
+ */
 
 bool EnableDebugPrivilege() {
     HANDLE hToken;
@@ -133,7 +143,16 @@ Cleanup:
 }
 // The above function is taken from https://vimalshekar.github.io/codesamples/Checking-If-Admin , modified to use C++ 
 // style I/O instead of printf like the original code.
-// Thanks!
+/**
+ * @brief Converts a UTF-16 wide string to a UTF-8 encoded std::string.
+ *
+ * Converts the given Windows-style wide string (UTF-16) into a UTF-8 encoded
+ * std::string suitable for use with standard C++ and UTF-8 APIs. Returns an
+ * empty string when the input is empty.
+ *
+ * @param wstr Wide string (UTF-16) to convert.
+ * @return std::string UTF-8 encoded representation of `wstr`.
+ */
 
 std::string WideToString(const std::wstring& wstr) {
     if (wstr.empty()) return "";
@@ -142,7 +161,15 @@ std::string WideToString(const std::wstring& wstr) {
     WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)wstr.size(), &strTo[0], size_needed, NULL, NULL);
     return strTo;
 }
-// The above stupid function is to convert wide strings (used by Windows API) to normal strings (used by C++ standard library) because cout chokes on wide strings.
+/**
+ * @brief Retrieve a process's creation timestamp as a raw Windows FILETIME value.
+ *
+ * Obtains the creation time for the process identified by `pid` and returns it as
+ * a 64-bit FILETIME value (number of 100-nanosecond intervals since January 1, 1601 UTC).
+ *
+ * @param pid Process identifier (PID) of the target process.
+ * @return ULONGLONG The process creation time as a FILETIME quad-part value, or `0` if the time cannot be obtained (e.g., process cannot be opened or the API call fails).
+ */
 
 
 ULONGLONG GetProcessCreationTime(DWORD pid) {
@@ -166,7 +193,17 @@ ULONGLONG GetProcessCreationTime(DWORD pid) {
 // it actually returns a raw FILETIME, meaning it is an unsigned 64-bit integer that
 // shows the amount of 100-nanosecond intervals since January 1, 1601 (UTC), which is just straight up not readable, and
 // in my opinion INSANELY arbritrary, but I guess Microsoft is Microsoft...
-// In short, we need to do some more math on this.
+/**
+ * @brief Produces a human-readable creation time for the given process.
+ *
+ * Queries the process creation time and formats it as a relative age (e.g., "2 days ago")
+ * followed by a parenthesized local timestamp (e.g., "Mon 2025-02-02 11:42:10 +05:30").
+ *
+ * @param pid Process identifier to query.
+ * @return std::string Human-readable creation time in the form
+ * "X seconds/minutes/hours/days ago (Day YYYY-MM-DD HH:MM:SS ±ZZZZ)". Returns `"N/A"` if
+ * the creation time cannot be obtained. 
+ */
 
 std::string GetReadableFileTime(DWORD pid) {
     ULONGLONG creationTime = GetProcessCreationTime(pid);
@@ -197,6 +234,17 @@ std::string GetReadableFileTime(DWORD pid) {
 }
 
 
+/**
+ * @brief Print the ancestry chain for a process to standard output.
+ *
+ * Prints each ancestor as "ExecutableName (PID <pid>)" with two-space indentation per
+ * generation. Recursively walks parent processes and increases indentation for each level.
+ * If the parent process cannot be verified (not found, has creation time 0, or its creation
+ * time is newer than the child), a "[Parent Process Exited]" placeholder is printed instead.
+ *
+ * @param pid Process identifier whose ancestry will be printed. pid values 0 and 4 are ignored.
+ * @param depth Indentation depth (number of two-space indents) used for the current line.
+ */
 void PrintAncestry(DWORD pid, int depth = 0) {
 
 /*
@@ -252,6 +300,16 @@ systemd (pid 1)
 
 
 
+/**
+ * @brief Inspect a process and print basic information to the console.
+ *
+ * Prints the target process's executable path (if queryable), its ancestry chain,
+ * and a human-readable process start time. Errors encountered while opening the
+ * process or querying its image are written to stderr; output uses ANSI color
+ * sequences when virtual terminal mode is available.
+ *
+ * @param pid The process identifier (PID) of the target process to inspect.
+ */
 void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
     if (!hProcess) {
