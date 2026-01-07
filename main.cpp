@@ -274,7 +274,7 @@ CloseHandle(hSnapshot);
                                           // idk just in case some psycho has a gazillion nested procs
     
         // surprise we have nested for loops 
-        for (size_t j = 0; j <= i; j++) {
+        for (size_t j = 0; j < i; j++) {
                 std::cout << "  "; // this adds indentation
             }
         if (i > 0) {
