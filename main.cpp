@@ -230,7 +230,7 @@ UPDATE: This is done now!!
         do {
             if (pe32.th32ProcessID == pid) {
                 // Without comments, this literally looks like alien gibberish so lemme explain
-                parentPid = pe32.th32ParentProcessID; // this is the parent process pid
+              
                 ULONGLONG creationTime = GetProcessCreationTime(pid); // this stores the creation time of the CURRENT pid (not parent)
                 exeTimes.emplace_back(creationTime); // immediately stores the above to the list
                 exeName = WideToString(pe32.szExeFile); //this stores the NAME of the current pid, converted to something that the terminal won't choke and die on
