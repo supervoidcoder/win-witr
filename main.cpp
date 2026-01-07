@@ -225,7 +225,7 @@ UPDATE: This is done now!!
     std::vector<DWORD> parentPids;
     bool found = false;
     while (pid != 0 && pid != 4) {
-    
+    found = false;
     if (Process32First(hSnapshot, &pe32)) {
         do {
             if (pe32.th32ProcessID == pid) {
