@@ -265,7 +265,7 @@ jobs:
       
       - name: Build win-witr
         run: |
-          cl.exe /EHsc /std:c++20 main.cpp /Fe:win-witr.exe advapi32.lib iphlpapi.lib ws2_32.lib shell32.lib /DUNICODE /D_UNICODE
+           cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
       
       - name: Note about elevation
         run: |
