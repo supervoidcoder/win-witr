@@ -15,7 +15,6 @@
 #include <iomanip> 
 #include <sstream>  
 #include <ctime>      
-#include <vector>
 #include <algorithm>
 
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
@@ -217,6 +216,8 @@ UPDATE: This is done now!!
     PROCESSENTRY32 pe32{};
     pe32.dwSize = sizeof(PROCESSENTRY32);
     DWORD parentPid = 0;
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) return;
     std::string exeName = "Unknown/Dead Process";
     std::vector<std::string> exeNames;
     std::vector<ULONGLONG> exeTimes; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
@@ -224,8 +225,7 @@ UPDATE: This is done now!!
     std::vector<DWORD> parentPids;
     bool found = false;
     while (pid != 0 && pid != 4) {
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return;
+    
     if (Process32First(hSnapshot, &pe32)) {
         do {
             if (pe32.th32ProcessID == pid) {
@@ -237,7 +237,7 @@ UPDATE: This is done now!!
                 exeNames.emplace_back(exeName); // this adds the above to the name list
                 pidNames.emplace_back(pid); // this adds the current pid (no need to store in var as already passed into if)
                 
-                DWORD parentPid = pe32.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
+                parentPid = pe32.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
                 parentPids.emplace_back(pe32.th32ParentProcessID); // adds above to list
                 ULONGLONG parentTime = GetProcessCreationTime(parentPid); // this gets the creation time of that one
 
