@@ -129,47 +129,57 @@ jobs:
         id: errors
         continue-on-error: true
         run: |
+          $failed = $false
+          
           Write-Host "Testing --pid with non-existent PID (99999)..." -ForegroundColor Cyan
           $ErrorActionPreference = 'Continue'
-          cmd /c "win-witr.exe --pid 99999 2>&1" > $null
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -eq 0) {
-            (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=❌' | Set-Content test-results.txt
-            throw "❌ Should fail with non-existent PID"
+          $output = cmd /c "win-witr.exe --pid 99999 2>&1"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "❌ Should fail with non-existent PID" -ForegroundColor Red
+            $failed = $true
+          } else {
+            Write-Host "✅ Correctly failed with non-existent PID" -ForegroundColor Green
           }
           
           Write-Host "Testing --pid with non-numeric argument..." -ForegroundColor Cyan
           $output = cmd /c "win-witr.exe --pid notanumber 2>&1"
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -eq 0) {
-            (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=❌' | Set-Content test-results.txt
-            throw "❌ Should fail with non-numeric PID"
-          }
-          if (($output -join " ") -notmatch "not a valid number") {
-            (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=❌' | Set-Content test-results.txt
-            throw "❌ Missing proper error message"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "❌ Should fail with non-numeric PID" -ForegroundColor Red
+            $failed = $true
+          } elseif (($output -join " ") -notmatch "not a valid number") {
+            Write-Host "❌ Missing proper error message for non-numeric PID" -ForegroundColor Red
+            $failed = $true
+          } else {
+            Write-Host "✅ Correctly failed with non-numeric PID" -ForegroundColor Green
           }
           
           Write-Host "Testing --pid without argument..." -ForegroundColor Cyan
           $output = cmd /c "win-witr.exe --pid 2>&1"
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -eq 0) {
-            (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=❌' | Set-Content test-results.txt
-            throw "❌ Should fail when --pid has no argument"
-          }
-          if (($output -join " ") -notmatch "requires an argument") {
-            (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=❌' | Set-Content test-results.txt
-            throw "❌ Missing 'requires argument' error"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "❌ Should fail when --pid has no argument" -ForegroundColor Red
+            $failed = $true
+          } elseif (($output -join " ") -notmatch "requires an argument") {
+            Write-Host "❌ Missing 'requires argument' error" -ForegroundColor Red
+            $failed = $true
+          } else {
+            Write-Host "✅ Correctly failed with missing argument" -ForegroundColor Green
           }
           
-          (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=✅' | Set-Content test-results.txt
-          Write-Host "✅ Error handling tests passed" -ForegroundColor Green
+          if ($failed) {
+            (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=❌' | Set-Content test-results.txt
+            Write-Host "❌ Error handling tests failed" -ForegroundColor Red
+          } else {
+            (Get-Content test-results.txt) -replace 'ERROR_HANDLING=⏳', 'ERROR_HANDLING=✅' | Set-Content test-results.txt
+            Write-Host "✅ Error handling tests passed" -ForegroundColor Green
+          }
       
       # ============ PROCESS NAME LOOKUP TESTS ============
       - name: Test process name lookup
         id: lookup
         continue-on-error: true
         run: |
+          $failed = $false
+          
           Write-Host "Testing process name lookup for svchost.exe..." -ForegroundColor Cyan
           ./win-witr.exe svchost.exe 2>&1 | Out-Null
           
@@ -179,18 +189,23 @@ jobs:
           Write-Host "Testing with non-existent process name..." -ForegroundColor Cyan
           $ErrorActionPreference = 'Continue'
           $output = cmd /c "win-witr.exe totallyFakeProcess.exe 2>&1"
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -eq 0) {
-            (Get-Content test-results.txt) -replace 'PROCESS_LOOKUP=⏳', 'PROCESS_LOOKUP=❌' | Set-Content test-results.txt
-            throw "❌ Should fail for non-existent process"
-          }
-          if (($output -join " ") -notmatch "Could not find process") {
-            (Get-Content test-results.txt) -replace 'PROCESS_LOOKUP=⏳', 'PROCESS_LOOKUP=❌' | Set-Content test-results.txt
-            throw "❌ Missing proper error message"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "❌ Should fail for non-existent process" -ForegroundColor Red
+            $failed = $true
+          } elseif (($output -join " ") -notmatch "Could not find process") {
+            Write-Host "❌ Missing proper error message for non-existent process" -ForegroundColor Red
+            $failed = $true
+          } else {
+            Write-Host "✅ Correctly failed with non-existent process" -ForegroundColor Green
           }
           
-          (Get-Content test-results.txt) -replace 'PROCESS_LOOKUP=⏳', 'PROCESS_LOOKUP=✅' | Set-Content test-results.txt
-          Write-Host "✅ Process lookup tests passed" -ForegroundColor Green
+          if ($failed) {
+            (Get-Content test-results.txt) -replace 'PROCESS_LOOKUP=⏳', 'PROCESS_LOOKUP=❌' | Set-Content test-results.txt
+            Write-Host "❌ Process lookup tests failed" -ForegroundColor Red
+          } else {
+            (Get-Content test-results.txt) -replace 'PROCESS_LOOKUP=⏳', 'PROCESS_LOOKUP=✅' | Set-Content test-results.txt
+            Write-Host "✅ Process lookup tests passed" -ForegroundColor Green
+          }
       
       # ============ OUTPUT FORMAT VALIDATION ============
       - name: Test output validation
