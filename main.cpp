@@ -255,10 +255,10 @@ UPDATE: This is done now!!
         } while (Process32Next(hSnapshot, &pe32));
 
     }
-    CloseHandle(hSnapshot);
+    
     if (!found) break;
     }
-
+CloseHandle(hSnapshot);
     //phew thankfully we're done with that mess
     // now we need to reverse all the vector lists we made so
     // that the ancestry tree is correctly diisplayed from root to children like witr
