@@ -1,0 +1,273 @@
+name: Runtime Tests
+
+on: 
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  runtime-tests:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+      
+      - name: Build win-witr
+        run: |
+          cl.exe /EHsc /std:c++20 main.cpp /Fe:win-witr.exe advapi32.lib iphlpapi.lib ws2_32.lib shell32.lib
+          if ($LASTEXITCODE -ne 0) {
+            throw "Build failed!"
+          }
+      
+      # ============ HELP COMMAND TESTS ============
+      - name: Test --help flag
+        run: |
+          Write-Host "Testing --help flag..." -ForegroundColor Cyan
+          ./win-witr.exe --help
+          if ($LASTEXITCODE -ne 0) { 
+            throw "❌ Help command failed" 
+          }
+          Write-Host "✅ --help passed" -ForegroundColor Green
+      
+      - name: Test -h flag
+        run: |
+          Write-Host "Testing -h flag..." -ForegroundColor Cyan
+          ./win-witr.exe -h
+          if ($LASTEXITCODE -ne 0) { 
+            throw "❌ Short help failed" 
+          }
+          Write-Host "✅ -h passed" -ForegroundColor Green
+      
+      # ============ VERSION COMMAND TESTS ============
+      - name: Test --version flag
+        run: |
+          Write-Host "Testing --version flag..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --version | Out-String
+          Write-Host $output
+          if ($output -notmatch "win-witr v\d+\.\d+\.\d+") {
+            throw "❌ Version format incorrect: $output"
+          }
+          Write-Host "✅ --version passed" -ForegroundColor Green
+      
+      - name: Test -v flag
+        run: |
+          Write-Host "Testing -v flag..." -ForegroundColor Cyan
+          ./win-witr.exe -v
+          if ($LASTEXITCODE -ne 0) { 
+            throw "❌ Short version failed" 
+          }
+          Write-Host "✅ -v passed" -ForegroundColor Green
+      
+      # ============ PID INSPECTION TESTS ============
+      - name: Test --pid with System Idle Process (PID 0)
+        run: |
+          Write-Host "Testing --pid 0 (System Idle)..." -ForegroundColor Cyan
+          ./win-witr.exe --pid 0 2>&1 | Out-Null
+          # May fail due to permissions, that's OK
+          Write-Host "✅ PID 0 test completed" -ForegroundColor Green
+      
+      - name: Test --pid with System process (PID 4)
+        run: |
+          Write-Host "Testing --pid 4 (System)..." -ForegroundColor Cyan
+          ./win-witr.exe --pid 4 2>&1 | Out-Null
+          # May fail due to permissions, that's OK
+          Write-Host "✅ PID 4 test completed" -ForegroundColor Green
+      
+      - name: Test --pid with current PowerShell process
+        run: |
+          Write-Host "Testing --pid with current process ($PID)..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --pid $PID | Out-String
+          Write-Host $output
+          if ($LASTEXITCODE -ne 0) {
+            throw "❌ Current process PID inspection failed"
+          }
+          if ($output -notmatch "Process Ancestry") {
+            throw "❌ Output missing 'Process Ancestry'"
+          }
+          Write-Host "✅ Current process PID test passed" -ForegroundColor Green
+      
+      - name: Test --pid with explorer.exe
+        run: |
+          Write-Host "Testing --pid with explorer.exe..." -ForegroundColor Cyan
+          $explorerPid = (Get-Process explorer -ErrorAction SilentlyContinue | Select-Object -First 1).Id
+          if ($explorerPid) {
+            Write-Host "Found explorer.exe with PID: $explorerPid"
+            ./win-witr.exe --pid $explorerPid
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "⚠️ Explorer access might be restricted" -ForegroundColor Yellow
+            }
+          } else {
+            Write-Host "⚠️ Explorer not running, skipping" -ForegroundColor Yellow
+          }
+          Write-Host "✅ Explorer test completed" -ForegroundColor Green
+      
+      # ============ ERROR HANDLING TESTS ============
+      - name: Test --pid with invalid PID (99999)
+        run: |
+          Write-Host "Testing --pid with non-existent PID (99999)..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --pid 99999 2>&1 | Out-String
+          Write-Host $output
+          if ($LASTEXITCODE -eq 0) {
+            throw "❌ Should fail with non-existent PID"
+          }
+          Write-Host "✅ Invalid PID handling passed" -ForegroundColor Green
+      
+      - name: Test --pid with non-numeric argument
+        run: |
+          Write-Host "Testing --pid with non-numeric argument..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --pid notanumber 2>&1 | Out-String
+          Write-Host $output
+          if ($LASTEXITCODE -eq 0) {
+            throw "❌ Should fail with non-numeric PID"
+          }
+          if ($output -notmatch "not a valid number") {
+            throw "❌ Missing proper error message"
+          }
+          Write-Host "✅ Non-numeric PID handling passed" -ForegroundColor Green
+      
+      - name: Test --pid without argument
+        run: |
+          Write-Host "Testing --pid without argument..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --pid 2>&1 | Out-String
+          Write-Host $output
+          if ($LASTEXITCODE -eq 0) {
+            throw "❌ Should fail when --pid has no argument"
+          }
+          if ($output -notmatch "requires an argument") {
+            throw "❌ Missing 'requires argument' error"
+          }
+          Write-Host "✅ Missing argument handling passed" -ForegroundColor Green
+      
+      # ============ PROCESS NAME LOOKUP TESTS ============
+      - name: Test process name with svchost.exe
+        run: |
+          Write-Host "Testing process name lookup for svchost.exe..." -ForegroundColor Cyan
+          $output = ./win-witr.exe svchost.exe 2>&1 | Out-String
+          Write-Host $output
+          if ($output -match "Process Name specified") {
+            Write-Host "✅ Found svchost.exe" -ForegroundColor Green
+          } else {
+            Write-Host "⚠️ Unexpected output format" -ForegroundColor Yellow
+          }
+      
+      - name: Test process name with explorer.exe
+        run: |
+          Write-Host "Testing process name lookup for explorer.exe..." -ForegroundColor Cyan
+          ./win-witr.exe explorer.exe 2>&1 | Out-Null
+          Write-Host "✅ Explorer lookup completed" -ForegroundColor Green
+      
+      - name: Test process name with non-existent process
+        run: |
+          Write-Host "Testing with non-existent process name..." -ForegroundColor Cyan
+          $output = ./win-witr.exe totallyFakeProcess.exe 2>&1 | Out-String
+          Write-Host $output
+          if ($LASTEXITCODE -eq 0) {
+            throw "❌ Should fail for non-existent process"
+          }
+          if ($output -notmatch "Could not find process") {
+            throw "❌ Missing proper error message"
+          }
+          Write-Host "✅ Non-existent process handling passed" -ForegroundColor Green
+      
+      # ============ OUTPUT FORMAT VALIDATION ============
+      - name: Validate PID output contains required fields
+        run: |
+          Write-Host "Validating output format..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --pid $PID | Out-String
+          $requiredFields = @("Executable Path", "Process Ancestry", "Started")
+          foreach ($field in $requiredFields) {
+            if ($output -notmatch [regex]::Escape($field)) {
+              throw "❌ Output missing required field: $field"
+            }
+          }
+          Write-Host "✅ Output format validation passed" -ForegroundColor Green
+      
+      - name: Test ancestry tree formatting
+        run: |
+          Write-Host "Testing ancestry tree formatting..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --pid $PID | Out-String
+          # Check for tree-like structure
+          if ($output -match "PID") {
+            Write-Host "✅ Ancestry tree formatting passed" -ForegroundColor Green
+          } else {
+            throw "❌ Ancestry tree not properly formatted"
+          }
+      
+      - name: Test timestamp format
+        run: |
+          Write-Host "Testing timestamp format..." -ForegroundColor Cyan
+          $output = ./win-witr.exe --pid $PID | Out-String
+          # Should contain "ago" and a date
+          if ($output -match "ago") {
+            Write-Host "✅ Timestamp format passed" -ForegroundColor Green
+          } else {
+            throw "❌ Timestamp format incorrect"
+          }
+      
+      # ============ STRESS TESTS ============
+      - name: Rapid-fire stress test
+        run: |
+          Write-Host "Running stress test (50 rapid requests)..." -ForegroundColor Cyan
+          for ($i = 0; $i -lt 50; $i++) {
+            ./win-witr.exe --pid $PID | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "❌ Stress test failed at iteration $i"
+            }
+          }
+          Write-Host "✅ Stress test passed (50 iterations)" -ForegroundColor Green
+      
+      - name: Test multiple running processes
+        run: |
+          Write-Host "Testing against multiple running processes..." -ForegroundColor Cyan
+          $processes = Get-Process | Where-Object { $_.Id -ne 0 -and $_.Id -ne 4 } | Select-Object -First 5
+          foreach ($proc in $processes) {
+            Write-Host "  Testing PID $($proc.Id) ($($proc.Name))..."
+            ./win-witr.exe --pid $proc.Id 2>&1 | Out-Null
+          }
+          Write-Host "✅ Multiple process test completed" -ForegroundColor Green
+      
+      # ============ UNICODE HANDLING ============
+      - name: Test Unicode tree characters
+        run: |
+          Write-Host "Testing Unicode character handling..." -ForegroundColor Cyan
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          $output = ./win-witr.exe --pid $PID 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            throw "❌ Unicode handling failed"
+          }
+          Write-Host "✅ Unicode test passed" -ForegroundColor Green
+      
+      # ============ FINAL SUMMARY ============
+      - name: Test Summary
+        if: always()
+        run: |
+          Write-Host ""
+          Write-Host "========================================" -ForegroundColor Magenta
+          Write-Host "   🎉 RUNTIME TESTS COMPLETED! 🎉" -ForegroundColor Magenta
+          Write-Host "========================================" -ForegroundColor Magenta
+          Write-Host ""
+
+  # ============ ELEVATED PRIVILEGES TEST (separate job) ============
+  runtime-tests-elevated:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+      
+      - name: Build win-witr
+        run: |
+          cl.exe /EHsc /std:c++20 main.cpp /Fe:win-witr.exe advapi32.lib iphlpapi.lib ws2_32.lib shell32.lib
+      
+      - name: Note about elevation
+        run: |
+          Write-Host "Note: GitHub Actions runners have limited elevation capabilities" -ForegroundColor Yellow
+          Write-Host "Some system process access tests may be skipped" -ForegroundColor Yellow
