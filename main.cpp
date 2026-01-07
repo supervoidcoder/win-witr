@@ -15,6 +15,7 @@
 #include <iomanip> 
 #include <sstream>  
 #include <ctime>      
+#include <algorithm>
 
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
 // The above macro converts Windows FILETIME to Unix epoch time in seconds.
@@ -197,58 +198,109 @@ std::string GetReadableFileTime(DWORD pid) {
 }
 
 
-void PrintAncestry(DWORD pid, int depth = 0) {
+void PrintAncestry(DWORD pid) {
 
 /*
-TODO: This tree is flipped. The output should be like this, as shown in the original witr:
+~~~~~~~~~~~~~TODO: This tree is flipped. The output should be like this, as shown in the original witr:
 systemd (pid 1)
   └─ PM2 v5.3.1: God (pid 1481580)
     └─ python (pid 1482060)
 
+UPDATE: This is done now!!
 
 */
 
-    if (pid == 0 || pid == 4) return;
-
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return;
+    
+    
 
     PROCESSENTRY32 pe32{};
     pe32.dwSize = sizeof(PROCESSENTRY32);
     DWORD parentPid = 0;
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) return;
     std::string exeName = "Unknown/Dead Process";
+    std::vector<std::string> exeNames;
+    std::vector<ULONGLONG> exeTimes; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
+    std::vector<DWORD> pidNames;     // hopefully the compiler can fix it
+    std::vector<DWORD> parentPids;
     bool found = false;
-
+    while (pid != 0 && pid != 4) {
+    found = false;
     if (Process32First(hSnapshot, &pe32)) {
         do {
             if (pe32.th32ProcessID == pid) {
-                parentPid = pe32.th32ParentProcessID;
-                exeName = WideToString(pe32.szExeFile);
+                // Without comments, this literally looks like alien gibberish so lemme explain
+              
+                ULONGLONG creationTime = GetProcessCreationTime(pid); // this stores the creation time of the CURRENT pid (not parent)
+                exeTimes.emplace_back(creationTime); // immediately stores the above to the list
+                exeName = WideToString(pe32.szExeFile); //this stores the NAME of the current pid, converted to something that the terminal won't choke and die on
+                exeNames.emplace_back(exeName); // this adds the above to the name list
+                pidNames.emplace_back(pid); // this adds the current pid (no need to store in var as already passed into if)
+                
+                parentPid = pe32.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
+                parentPids.emplace_back(pe32.th32ParentProcessID); // adds above to list
+                ULONGLONG parentTime = GetProcessCreationTime(parentPid); // this gets the creation time of that one
+
+                if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
+                    // we can't be sure if the parent actually exists and windows isn't lying to us,
+                    // so always double check
+                        pid = 0; 
+                } else {
+
+                    pid = parentPid;
+                }
                 found = true;
                 break;
             }
         } while (Process32Next(hSnapshot, &pe32));
+
     }
-    CloseHandle(hSnapshot);
+    
+    if (!found) break;
+    }
+CloseHandle(hSnapshot);
+    //phew thankfully we're done with that mess
+    // now we need to reverse all the vector lists we made so
+    // that the ancestry tree is correctly diisplayed from root to children like witr
+    // in c++20 there is a new way to reverse called ranges or smth but i won't use that
+    std::reverse(exeNames.begin(), exeNames.end()); 
+    std::reverse(exeTimes.begin(), exeTimes.end());
+    std::reverse(pidNames.begin(), pidNames.end());  
+    std::reverse(parentPids.begin(), parentPids.end());  
+    // now get the size of one of the lists to know how many we got (they should all be the same length)
+    size_t nameSize = exeNames.size();
 
-    for (int i = 0; i < depth; ++i) std::cout << "  ";
-    std::cout << exeName << " (PID " << pid << ")" << std::endl;
+    for (size_t i = 0; i < nameSize; i++ ){ // size_t is an unsigned integer designed to be ridiculously big to handle monstrosities,
+                                          // idk just in case some psycho has a gazillion nested procs
+    
+        // surprise we have nested for loops 
+        for (size_t j = 0; j < i; j++) {
+                std::cout << "  "; // this adds indentation
+            }
+        if (i > 0) {
+        
+        std::cout << "\u2514\u2500 ";  // it's the little thingy thing └─ unicode from witr but escaped s
+        }   
+        std::cout << exeNames[i] << " (PID " << pidNames[i] << ")" << std::endl;
 
-    if (found && parentPid != 0 && parentPid != pid) {
-        // VERIFICATION STEP:
-        ULONGLONG childTime = GetProcessCreationTime(pid);
-        ULONGLONG parentTime = GetProcessCreationTime(parentPid);
-
-        // If parentTime is 0, the parent is dead.
-        // If parentTime > childTime, the parent is an impostor among us (recycled PID).
-        if (parentTime != 0 && parentTime < childTime) {
-            PrintAncestry(parentPid, depth + 1);
-        } else {
-            for (int i = 0; i < depth + 1; ++i) std::cout << "  ";
-            std::cout << "[Parent Process Exited]" << std::endl;
+    }
+    
+   if (nameSize > 0) {
+    DWORD lastParentPid = parentPids.back();
+    ULONGLONG lastParentTime = GetProcessCreationTime(lastParentPid);
+    ULONGLONG lastChildTime = exeTimes.back();
+    
+    if (lastParentPid != 0 && lastParentPid != 4 && 
+        (lastParentTime == 0 || lastParentTime >= lastChildTime)) {
+        for (size_t j = 0; j < nameSize; j++) {
+            std::cout << "  ";
         }
+        std::cout << "└─ [Parent Process Exited]" << std::endl;
     }
 }
+    }
+
+
 
 
 
@@ -349,6 +401,7 @@ int findMyProc(const char *procname) {
  
 
 int main(int argc, char* argv[]) {
+    SetConsoleOutputCP(CP_UTF8);
     for (int i = 0; i < argc; ++i) {
         std::string arg = argv[i];
 
