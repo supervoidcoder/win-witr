@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for proper versioning
-      
+
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
@@ -39,16 +39,16 @@ jobs:
         shell: pwsh
         run: |
           $latestTag = "${{ steps.get_latest_tag.outputs.latest_tag }}"
-          
+
           # Parse version (remove 'v' prefix)
           if ($latestTag -match 'v?(\d+)\.(\d+)\.(\d+)') {
             $major = [int]$Matches[1]
             $minor = [int]$Matches[2]
             $patch = [int]$Matches[3]
-            
+
             # Increment patch version
             $patch = $patch + 1
-            
+
             $newVersion = "v$major.$minor.$patch"
             Write-Output "Next version: $newVersion"
             Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
@@ -66,15 +66,15 @@ jobs:
           $commitMsg = git log -1 --pretty=%B
           $commitSubject = git log -1 --pretty=%s
           $commitBody = git log -1 --pretty=%b
-          
+
           # Create release notes
           $releaseNotes = "## Changes`n`n"
-          
+
           # Parse commit type (fix, feat, docs, etc.)
           if ($commitSubject -match '^(fix|feat|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?:\s*(.+)$') {
             $type = $Matches[1]
             $description = $Matches[3]
-            
+
             $typeLabel = switch ($type) {
               'fix' { '🐛 Fix' }
               'feat' { '✨ Feature' }
@@ -89,22 +89,22 @@ jobs:
               'revert' { '⏪ Revert' }
               default { '📝 Update' }
             }
-            
+
             $releaseNotes += "**$typeLabel**: $description`n"
           } else {
             # If not following conventional commits, just use the subject
             $releaseNotes += "$commitSubject`n"
           }
-          
+
           # Add commit body if present
           if ($commitBody.Trim() -ne "") {
             $releaseNotes += "`n$commitBody`n"
           }
-          
+
           # Add commit SHA
           $commitSha = git rev-parse --short HEAD
           $releaseNotes += "`n---`n*Commit: $commitSha*"
-          
+
           # Save to output (escape for GitHub Actions)
           $releaseNotes = $releaseNotes -replace '"', '\"'
           $releaseNotes = $releaseNotes -replace "`n", "\n"
@@ -113,25 +113,15 @@ jobs:
       - name: Compile with MSVC
         run: |
           cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
-        
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.next_version.outputs.version }}
-          release_name: Release ${{ steps.next_version.outputs.version }}
+          name: Release ${{ steps.next_version.outputs.version }}
           body: ${{ steps.parse_commit.outputs.notes }}
+          files: win-witr.exe
           draft: false
           prerelease: false
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./win-witr.exe
-          asset_name: win-witr.exe
-          asset_content_type: application/x-msdownload
