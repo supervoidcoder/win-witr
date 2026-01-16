@@ -13,6 +13,27 @@ While this is inspired by that project, this does not contain any actual code fr
 
 when this is done I will submit this to winget!!
 
+## Automatic Releases
+
+This project uses GitHub Actions to automatically compile and release new versions on every commit to the main branch.
+
+**How it works:**
+- Every commit to `main` automatically triggers a build and release
+- The release version is automatically incremented at the patch level (e.g., v0.1.0 → v0.1.1, v0.0.5 → v0.0.6)
+- Release notes are generated from commit messages
+  - If you use [conventional commits](https://www.conventionalcommits.org/) (e.g., `fix: bug description`, `feat: new feature`), the release notes will be nicely formatted with emojis
+  - Otherwise, the commit message is used as-is
+- The compiled binary (`win-witr.exe`) is attached to each release
+- Only patch versions are auto-released; major (1.0, 2.0) and minor (0.1, 0.2) releases are done manually
+
+**Compilation flags:**
+The automatic builds use Microsoft's C++ compiler (MSVC) with:
+- `/O2` - Maximum optimization for speed
+- `/Ot` - Favor fast code
+- `/GL` - Whole program optimization
+- `/DUNICODE` and `/D_UNICODE` - Unicode support
+- `/std:c++20` - C++20 standard
+
 **Why C++?**
 
 - I don't know crap about Go
