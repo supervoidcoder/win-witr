@@ -1,0 +1,197 @@
+name: Release Build
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    # Only run if PR was merged (not just closed) and source files changed
+    if: github.event.pull_request.merged == true
+    runs-on: windows-latest
+    concurrency:
+      group: 'release-${{ github.ref }}'
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper versioning
+
+      - name: Check if source files changed
+        id: check_files
+        shell: pwsh
+        run: |
+          # Get list of changed files in the merged PR
+          $changedFiles = git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
+          Write-Output "Changed files:"
+          Write-Output $changedFiles
+
+          # Check if any C++ source files changed
+          $sourceChanged = $false
+          foreach ($file in $changedFiles) {
+            if ($file -match '\.(cpp|h|hpp|c|cc|cxx)$') {
+              $sourceChanged = $true
+              Write-Output "Source file changed: $file"
+              break
+            }
+          }
+
+          if ($sourceChanged) {
+            Write-Output "should_release=true" >> $env:GITHUB_OUTPUT
+            Write-Output "Source files changed - will proceed with release"
+          } else {
+            Write-Output "should_release=false" >> $env:GITHUB_OUTPUT
+            Write-Output "No source files changed - skipping release"
+          }
+
+      - name: Setup MSVC
+        if: steps.check_files.outputs.should_release == 'true'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Get latest release tag
+        if: steps.check_files.outputs.should_release == 'true'
+        id: get_latest_tag
+        shell: pwsh
+        run: |
+          # Get the latest tag that matches semantic versioning pattern
+          $tags = git tag -l "v[0-9]*.[0-9]*.[0-9]*"
+          if ($tags) {
+            # Parse and sort tags by semantic version
+            $sortedTags = $tags | ForEach-Object {
+              if ($_ -match 'v?(\d+)\.(\d+)\.(\d+)') {
+                [PSCustomObject]@{
+                  Tag = $_
+                  Major = [int]$Matches[1]
+                  Minor = [int]$Matches[2]
+                  Patch = [int]$Matches[3]
+                }
+              }
+            } | Sort-Object -Property Major, Minor, Patch -Descending
+            $latestTag = $sortedTags[0].Tag
+            Write-Output "Latest tag: $latestTag"
+            Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Output "No existing tags found, starting from v0.0.0"
+            Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Determine next version
+        if: steps.check_files.outputs.should_release == 'true'
+        id: next_version
+        shell: pwsh
+        run: |
+          $latestTag = "${{ steps.get_latest_tag.outputs.latest_tag }}"
+
+          # Parse version (remove 'v' prefix)
+          if ($latestTag -match 'v?(\d+)\.(\d+)\.(\d+)') {
+            $major = [int]$Matches[1]
+            $minor = [int]$Matches[2]
+            $patch = [int]$Matches[3]
+
+            # Increment patch version
+            $patch = $patch + 1
+
+            $newVersion = "v$major.$minor.$patch"
+            Write-Output "Next version: $newVersion"
+            Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
+            Write-Output "version_number=$major.$minor.$patch" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Error "Could not parse version from tag: $latestTag"
+            exit 1
+          }
+
+      - name: Parse commit message for release notes
+        if: steps.check_files.outputs.should_release == 'true'
+        id: parse_commit
+        shell: pwsh
+        run: |
+          # Get commit information in a single call
+          $commitMsg = git log -1 --pretty=%B
+          $commitSubject = $commitMsg.Split("`n")[0]
+          $commitBodyLines = $commitMsg.Split("`n") | Select-Object -Skip 1
+          $commitBody = ($commitBodyLines -join "`n").Trim()
+
+          # Create release notes
+          $releaseNotes = "## Changes`n`n"
+
+          # Parse commit type (fix, feat, docs, etc.)
+          if ($commitSubject -match '^(fix|feat|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?:\s*(.+)$') {
+            $type = $Matches[1]
+            $description = $Matches[3]
+
+            $typeLabel = switch ($type) {
+              'fix' { '🐛 Fix' }
+              'feat' { '✨ Feature' }
+              'docs' { '📚 Documentation' }
+              'style' { '💄 Style' }
+              'refactor' { '♻️ Refactor' }
+              'test' { '✅ Test' }
+              'chore' { '🔧 Chore' }
+              'perf' { '⚡ Performance' }
+              'ci' { '👷 CI' }
+              'build' { '📦 Build' }
+              'revert' { '⏪ Revert' }
+              default { '📝 Update' }
+            }
+
+            $releaseNotes += "**$typeLabel**: $description`n"
+          } else {
+            # If not following conventional commits, just use the subject
+            $releaseNotes += "$commitSubject`n"
+          }
+
+          # Add commit body if present (with length limit)
+          if ($commitBody -ne "") {
+            $maxBodyLength = 1000
+            if ($commitBody.Length -gt $maxBodyLength) {
+              $commitBody = $commitBody.Substring(0, $maxBodyLength) + "..."
+            }
+            $releaseNotes += "`n$commitBody`n"
+          }
+
+          # Add commit SHA
+          $commitSha = git rev-parse --short HEAD
+          $releaseNotes += "`n---`n*Commit: $commitSha*"
+
+          # Save to output using multiline string with proper escaping
+          $delimiter = "EOF_$(Get-Random)"
+          Write-Output "notes<<$delimiter" >> $env:GITHUB_OUTPUT
+          Write-Output $releaseNotes >> $env:GITHUB_OUTPUT
+          Write-Output $delimiter >> $env:GITHUB_OUTPUT
+
+      - name: Compile with MSVC
+        if: steps.check_files.outputs.should_release == 'true'
+        id: compile
+        shell: pwsh
+        run: |
+          # Compile and capture exit code
+          cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
+          $exitCode = $LASTEXITCODE
+
+          if ($exitCode -eq 0) {
+            Write-Output "Compilation successful"
+            Write-Output "compile_success=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Output "Compilation failed with exit code: $exitCode"
+            Write-Output "compile_success=false" >> $env:GITHUB_OUTPUT
+            Write-Error "Build failed - release will be skipped"
+            exit 1
+          }
+
+      - name: Create Release and Upload Asset
+        if: steps.check_files.outputs.should_release == 'true' && steps.compile.outputs.compile_success == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.next_version.outputs.version }}
+          name: Release win-witr ${{ steps.next_version.outputs.version }}
+          body: ${{ steps.parse_commit.outputs.notes }}
+          files: win-witr.exe
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
