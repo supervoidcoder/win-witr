@@ -98,9 +98,8 @@ jobs:
             Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
             Write-Output "version_number=$major.$minor.$patch" >> $env:GITHUB_OUTPUT
           } else {
-            Write-Output "Could not parse version, defaulting to v0.0.1"
-            Write-Output "version=v0.0.1" >> $env:GITHUB_OUTPUT
-            Write-Output "version_number=0.0.1" >> $env:GITHUB_OUTPUT
+            Write-Error "Could not parse version from tag: $latestTag"
+            exit 1
           }
 
       - name: Parse commit message for release notes
@@ -186,10 +185,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.next_version.outputs.version }}
-          name: Release ${{ steps.next_version.outputs.version }}
+          name: Release win-witr ${{ steps.next_version.outputs.version }}
           body: ${{ steps.parse_commit.outputs.notes }}
           files: win-witr.exe
           draft: false
-          prerelease: false
+          prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
