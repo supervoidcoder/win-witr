@@ -24,9 +24,20 @@ jobs:
         shell: pwsh
         run: |
           # Get the latest tag that matches semantic versioning pattern
-          $tags = git tag -l "v*.*.*" | Sort-Object -Descending
+          $tags = git tag -l "v*.*.*"
           if ($tags) {
-            $latestTag = $tags[0]
+            # Parse and sort tags by semantic version
+            $sortedTags = $tags | ForEach-Object {
+              if ($_ -match 'v?(\d+)\.(\d+)\.(\d+)') {
+                [PSCustomObject]@{
+                  Tag = $_
+                  Major = [int]$Matches[1]
+                  Minor = [int]$Matches[2]
+                  Patch = [int]$Matches[3]
+                }
+              }
+            } | Sort-Object -Property Major, Minor, Patch -Descending
+            $latestTag = $sortedTags[0].Tag
             Write-Output "Latest tag: $latestTag"
             Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
           } else {
@@ -105,10 +116,11 @@ jobs:
           $commitSha = git rev-parse --short HEAD
           $releaseNotes += "`n---`n*Commit: $commitSha*"
 
-          # Save to output (escape for GitHub Actions)
-          $releaseNotes = $releaseNotes -replace '"', '\"'
-          $releaseNotes = $releaseNotes -replace "`n", "\n"
-          Write-Output "notes=$releaseNotes" >> $env:GITHUB_OUTPUT
+          # Save to output using multiline string with proper escaping
+          $delimiter = "EOF_$(Get-Random)"
+          Write-Output "notes<<$delimiter" >> $env:GITHUB_OUTPUT
+          Write-Output $releaseNotes >> $env:GITHUB_OUTPUT
+          Write-Output $delimiter >> $env:GITHUB_OUTPUT
 
       - name: Compile with MSVC
         run: |
