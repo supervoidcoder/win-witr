@@ -24,7 +24,7 @@ jobs:
         shell: pwsh
         run: |
           # Get the latest tag that matches semantic versioning pattern
-          $tags = git tag -l "v*.*.*"
+          $tags = git tag -l "v[0-9]*.[0-9]*.[0-9]*"
           if ($tags) {
             # Parse and sort tags by semantic version
             $sortedTags = $tags | ForEach-Object {
@@ -74,9 +74,11 @@ jobs:
         id: parse_commit
         shell: pwsh
         run: |
+          # Get commit information in a single call
           $commitMsg = git log -1 --pretty=%B
-          $commitSubject = git log -1 --pretty=%s
-          $commitBody = git log -1 --pretty=%b
+          $commitSubject = $commitMsg.Split("`n")[0]
+          $commitBodyLines = $commitMsg.Split("`n") | Select-Object -Skip 1
+          $commitBody = ($commitBodyLines -join "`n").Trim()
 
           # Create release notes
           $releaseNotes = "## Changes`n`n"
@@ -107,8 +109,12 @@ jobs:
             $releaseNotes += "$commitSubject`n"
           }
 
-          # Add commit body if present
-          if ($commitBody.Trim() -ne "") {
+          # Add commit body if present (with length limit)
+          if ($commitBody -ne "") {
+            $maxBodyLength = 1000
+            if ($commitBody.Length -gt $maxBodyLength) {
+              $commitBody = $commitBody.Substring(0, $maxBodyLength) + "..."
+            }
             $releaseNotes += "`n$commitBody`n"
           }
 
