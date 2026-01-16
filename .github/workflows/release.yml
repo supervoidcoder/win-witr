@@ -1,0 +1,137 @@
+name: Release Build
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper versioning
+      
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Get latest release tag
+        id: get_latest_tag
+        shell: pwsh
+        run: |
+          # Get the latest tag that matches semantic versioning pattern
+          $tags = git tag -l "v*.*.*" | Sort-Object -Descending
+          if ($tags) {
+            $latestTag = $tags[0]
+            Write-Output "Latest tag: $latestTag"
+            Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Output "No existing tags found, starting from v0.0.0"
+            Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Determine next version
+        id: next_version
+        shell: pwsh
+        run: |
+          $latestTag = "${{ steps.get_latest_tag.outputs.latest_tag }}"
+          
+          # Parse version (remove 'v' prefix)
+          if ($latestTag -match 'v?(\d+)\.(\d+)\.(\d+)') {
+            $major = [int]$Matches[1]
+            $minor = [int]$Matches[2]
+            $patch = [int]$Matches[3]
+            
+            # Increment patch version
+            $patch = $patch + 1
+            
+            $newVersion = "v$major.$minor.$patch"
+            Write-Output "Next version: $newVersion"
+            Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
+            Write-Output "version_number=$major.$minor.$patch" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Output "Could not parse version, defaulting to v0.0.1"
+            Write-Output "version=v0.0.1" >> $env:GITHUB_OUTPUT
+            Write-Output "version_number=0.0.1" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Parse commit message for release notes
+        id: parse_commit
+        shell: pwsh
+        run: |
+          $commitMsg = git log -1 --pretty=%B
+          $commitSubject = git log -1 --pretty=%s
+          $commitBody = git log -1 --pretty=%b
+          
+          # Create release notes
+          $releaseNotes = "## Changes`n`n"
+          
+          # Parse commit type (fix, feat, docs, etc.)
+          if ($commitSubject -match '^(fix|feat|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?:\s*(.+)$') {
+            $type = $Matches[1]
+            $description = $Matches[3]
+            
+            $typeLabel = switch ($type) {
+              'fix' { '🐛 Fix' }
+              'feat' { '✨ Feature' }
+              'docs' { '📚 Documentation' }
+              'style' { '💄 Style' }
+              'refactor' { '♻️ Refactor' }
+              'test' { '✅ Test' }
+              'chore' { '🔧 Chore' }
+              'perf' { '⚡ Performance' }
+              'ci' { '👷 CI' }
+              'build' { '📦 Build' }
+              'revert' { '⏪ Revert' }
+              default { '📝 Update' }
+            }
+            
+            $releaseNotes += "**$typeLabel**: $description`n"
+          } else {
+            # If not following conventional commits, just use the subject
+            $releaseNotes += "$commitSubject`n"
+          }
+          
+          # Add commit body if present
+          if ($commitBody.Trim() -ne "") {
+            $releaseNotes += "`n$commitBody`n"
+          }
+          
+          # Add commit SHA
+          $commitSha = git rev-parse --short HEAD
+          $releaseNotes += "`n---`n*Commit: $commitSha*"
+          
+          # Save to output (escape for GitHub Actions)
+          $releaseNotes = $releaseNotes -replace '"', '\"'
+          $releaseNotes = $releaseNotes -replace "`n", "\n"
+          Write-Output "notes=$releaseNotes" >> $env:GITHUB_OUTPUT
+
+      - name: Compile with MSVC
+        run: |
+          cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
+        
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.next_version.outputs.version }}
+          release_name: Release ${{ steps.next_version.outputs.version }}
+          body: ${{ steps.parse_commit.outputs.notes }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./win-witr.exe
+          asset_name: win-witr.exe
+          asset_content_type: application/x-msdownload
