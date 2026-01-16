@@ -15,10 +15,14 @@ when this is done I will submit this to winget!!
 
 ## Automatic Releases
 
-This project uses GitHub Actions to automatically compile and release new versions on every commit to the main branch.
+This project uses GitHub Actions to automatically compile and release new versions when PRs are merged to the main branch.
 
 **How it works:**
-- Every commit to `main` automatically triggers a build and release
+- Releases are triggered when a PR is merged to `main` (not on every push)
+- Only releases if C++ source files (`.cpp`, `.h`, `.hpp`, etc.) were changed
+  - README-only changes or other non-code changes won't trigger a release
+- The build must compile successfully before creating a release
+  - If compilation fails, no release is created
 - The release version is automatically incremented at the patch level (e.g., v0.1.0 → v0.1.1, v0.0.5 → v0.0.6)
 - Release notes are generated from commit messages
   - If you use [conventional commits](https://www.conventionalcommits.org/) (e.g., `fix: bug description`, `feat: new feature`), the release notes will be nicely formatted with emojis

@@ -1,7 +1,8 @@
 name: Release Build
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - main
 
@@ -10,16 +11,47 @@ permissions:
 
 jobs:
   build-and-release:
+    # Only run if PR was merged (not just closed) and source files changed
+    if: github.event.pull_request.merged == true
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for proper versioning
 
+      - name: Check if source files changed
+        id: check_files
+        shell: pwsh
+        run: |
+          # Get list of changed files in the merged PR
+          $changedFiles = git diff --name-only HEAD~1 HEAD
+          Write-Output "Changed files:"
+          Write-Output $changedFiles
+
+          # Check if any C++ source files changed
+          $sourceChanged = $false
+          foreach ($file in $changedFiles) {
+            if ($file -match '\.(cpp|h|hpp|c|cc|cxx)$') {
+              $sourceChanged = $true
+              Write-Output "Source file changed: $file"
+              break
+            }
+          }
+
+          if ($sourceChanged) {
+            Write-Output "should_release=true" >> $env:GITHUB_OUTPUT
+            Write-Output "Source files changed - will proceed with release"
+          } else {
+            Write-Output "should_release=false" >> $env:GITHUB_OUTPUT
+            Write-Output "No source files changed - skipping release"
+          }
+
       - name: Setup MSVC
+        if: steps.check_files.outputs.should_release == 'true'
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Get latest release tag
+        if: steps.check_files.outputs.should_release == 'true'
         id: get_latest_tag
         shell: pwsh
         run: |
@@ -46,6 +78,7 @@ jobs:
           }
 
       - name: Determine next version
+        if: steps.check_files.outputs.should_release == 'true'
         id: next_version
         shell: pwsh
         run: |
@@ -71,6 +104,7 @@ jobs:
           }
 
       - name: Parse commit message for release notes
+        if: steps.check_files.outputs.should_release == 'true'
         id: parse_commit
         shell: pwsh
         run: |
@@ -129,10 +163,25 @@ jobs:
           Write-Output $delimiter >> $env:GITHUB_OUTPUT
 
       - name: Compile with MSVC
+        if: steps.check_files.outputs.should_release == 'true'
+        id: compile
+        shell: pwsh
         run: |
+          # Compile and capture exit code
           cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
+          $exitCode = $LASTEXITCODE
+
+          if ($exitCode -eq 0) {
+            Write-Output "Compilation successful"
+            Write-Output "compile_success=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Output "Compilation failed with exit code: $exitCode"
+            Write-Output "compile_success=false" >> $env:GITHUB_OUTPUT
+            exit 1
+          }
 
       - name: Create Release and Upload Asset
+        if: steps.check_files.outputs.should_release == 'true' && steps.compile.outputs.compile_success == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.next_version.outputs.version }}
