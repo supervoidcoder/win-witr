@@ -10,28 +10,27 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    # Only run if PR was merged (not just closed) and source files changed
-    if: github.event.pull_request.merged == true
+  prepare:
+    name: Prepare release (check files, version, notes)
     runs-on: windows-latest
-    concurrency:
-      group: 'release-${{ github.ref }}'
-      cancel-in-progress: false
+    outputs:
+      should_release: ${{ steps.check_files.outputs.should_release }}
+      version: ${{ steps.next_version.outputs.version }}
+      version_number: ${{ steps.next_version.outputs.version_number }}
+      notes: ${{ steps.parse_commit.outputs.notes }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for proper versioning
+          fetch-depth: 0
 
       - name: Check if source files changed
         id: check_files
         shell: pwsh
         run: |
-          # Get list of changed files in the merged PR
           $changedFiles = git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
           Write-Output "Changed files:"
           Write-Output $changedFiles
 
-          # Check if any C++ source files changed
           $sourceChanged = $false
           foreach ($file in $changedFiles) {
             if ($file -match '\.(cpp|h|hpp|c|cc|cxx)$') {
@@ -49,19 +48,13 @@ jobs:
             Write-Output "No source files changed - skipping release"
           }
 
-      - name: Setup MSVC
-        if: steps.check_files.outputs.should_release == 'true'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Get latest release tag
         if: steps.check_files.outputs.should_release == 'true'
         id: get_latest_tag
         shell: pwsh
         run: |
-          # Get the latest tag that matches semantic versioning pattern
           $tags = git tag -l "v[0-9]*.[0-9]*.[0-9]*"
           if ($tags) {
-            # Parse and sort tags by semantic version
             $sortedTags = $tags | ForEach-Object {
               if ($_ -match 'v?(\d+)\.(\d+)\.(\d+)') {
                 [PSCustomObject]@{
@@ -73,10 +66,8 @@ jobs:
               }
             } | Sort-Object -Property Major, Minor, Patch -Descending
             $latestTag = $sortedTags[0].Tag
-            Write-Output "Latest tag: $latestTag"
             Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
           } else {
-            Write-Output "No existing tags found, starting from v0.0.0"
             Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
           }
 
@@ -86,18 +77,12 @@ jobs:
         shell: pwsh
         run: |
           $latestTag = "${{ steps.get_latest_tag.outputs.latest_tag }}"
-
-          # Parse version (remove 'v' prefix)
           if ($latestTag -match 'v?(\d+)\.(\d+)\.(\d+)') {
             $major = [int]$Matches[1]
             $minor = [int]$Matches[2]
             $patch = [int]$Matches[3]
-
-            # Increment patch version
             $patch = $patch + 1
-
             $newVersion = "v$major.$minor.$patch"
-            Write-Output "Next version: $newVersion"
             Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
             Write-Output "version_number=$major.$minor.$patch" >> $env:GITHUB_OUTPUT
           } else {
@@ -110,20 +95,16 @@ jobs:
         id: parse_commit
         shell: pwsh
         run: |
-          # Get commit information in a single call
           $commitMsg = git log -1 --pretty=%B
           $commitSubject = $commitMsg.Split("`n")[0]
           $commitBodyLines = $commitMsg.Split("`n") | Select-Object -Skip 1
           $commitBody = ($commitBodyLines -join "`n").Trim()
 
-          # Create release notes
           $releaseNotes = "## Changes`n`n"
 
-          # Parse commit type (fix, feat, docs, etc.)
           if ($commitSubject -match '^(fix|feat|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?:\s*(.+)$') {
             $type = $Matches[1]
             $description = $Matches[3]
-
             $typeLabel = switch ($type) {
               'fix' { '🐛 Fix' }
               'feat' { '✨ Feature' }
@@ -138,14 +119,11 @@ jobs:
               'revert' { '⏪ Revert' }
               default { '📝 Update' }
             }
-
             $releaseNotes += "**$typeLabel**: $description`n"
           } else {
-            # If not following conventional commits, just use the subject
             $releaseNotes += "$commitSubject`n"
           }
 
-          # Add commit body if present (with length limit)
           if ($commitBody -ne "") {
             $maxBodyLength = 1000
             if ($commitBody.Length -gt $maxBodyLength) {
@@ -154,43 +132,64 @@ jobs:
             $releaseNotes += "`n$commitBody`n"
           }
 
-          # Add commit SHA
           $commitSha = git rev-parse --short HEAD
           $releaseNotes += "`n---`n*Commit: $commitSha*"
 
-          # Save to output using multiline string with proper escaping
           $delimiter = "EOF_$(Get-Random)"
           Write-Output "notes<<$delimiter" >> $env:GITHUB_OUTPUT
           Write-Output $releaseNotes >> $env:GITHUB_OUTPUT
           Write-Output $delimiter >> $env:GITHUB_OUTPUT
 
-      - name: Compile with MSVC
-        if: steps.check_files.outputs.should_release == 'true'
-        id: compile
+  build:
+    name: Build matrix for multiple Windows architectures
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, x86, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSVC for ${{ matrix.arch }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Compile for ${{ matrix.arch }}
         shell: pwsh
         run: |
-          # Compile and capture exit code
-          cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
-          $exitCode = $LASTEXITCODE
+          $outName = "win-witr-${{ matrix.arch }}.exe"
+          cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:$outName
+          if ($LASTEXITCODE -ne 0) { Write-Error "Build failed for $env:Platform"; exit 1 }
 
-          if ($exitCode -eq 0) {
-            Write-Output "Compilation successful"
-            Write-Output "compile_success=true" >> $env:GITHUB_OUTPUT
-          } else {
-            Write-Output "Compilation failed with exit code: $exitCode"
-            Write-Output "compile_success=false" >> $env:GITHUB_OUTPUT
-            Write-Error "Build failed - release will be skipped"
-            exit 1
-          }
+      - name: Upload build artifact for ${{ matrix.arch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-witr-${{ matrix.arch }}
+          path: win-witr-${{ matrix.arch }}.exe
 
-      - name: Create Release and Upload Asset
-        if: steps.check_files.outputs.should_release == 'true' && steps.compile.outputs.compile_success == 'true'
+  create-release:
+    name: Create GitHub Release with all artifacts
+    needs: build
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -R artifacts
+
+      - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.next_version.outputs.version }}
-          name: Release win-witr ${{ steps.next_version.outputs.version }}
-          body: ${{ steps.parse_commit.outputs.notes }}
-          files: win-witr.exe
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Release win-witr ${{ needs.prepare.outputs.version }}
+          body: ${{ needs.prepare.outputs.notes }}
+          files: artifacts/*.exe
           draft: false
           prerelease: true
         env:
