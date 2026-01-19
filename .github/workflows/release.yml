@@ -52,21 +52,48 @@ jobs:
         if: steps.check_files.outputs.should_release == 'true'
         id: get_latest_tag
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tags = git tag -l "v[0-9]*.[0-9]*.[0-9]*"
-          if ($tags) {
-            $sortedTags = $tags | ForEach-Object {
-              if ($_ -match 'v?(\d+)\.(\d+)\.(\d+)') {
-                [PSCustomObject]@{
-                  Tag = $_
-                  Major = [int]$Matches[1]
-                  Minor = [int]$Matches[2]
-                  Patch = [int]$Matches[3]
-                }
-              }
-            } | Sort-Object -Property Major, Minor, Patch -Descending
-            $latestTag = $sortedTags[0].Tag
+          $repo = "${{ github.repository }}"
+          $headers = @{"Authorization" = "token $env:GITHUB_TOKEN"; "Accept" = "application/vnd.github.v3+json"}
+
+          # Try GitHub Releases API first (includes prereleases)
+          try {
+            $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=100" -Headers $headers -UseBasicParsing
+          } catch {
+            $releases = @()
+          }
+
+          $candidates = @()
+          foreach ($r in $releases) {
+            if ($r.tag_name -match 'v?(\d+)\.(\d+)\.(\d+)') {
+              $candidates += [PSCustomObject]@{ Tag = $r.tag_name; Major = [int]$Matches[1]; Minor = [int]$Matches[2]; Patch = [int]$Matches[3] }
+            }
+          }
+
+          if ($candidates.Count -gt 0) {
+            $sorted = $candidates | Sort-Object -Property @{Expression={$_.Major};Descending=$true}, @{Expression={$_.Minor};Descending=$true}, @{Expression={$_.Patch};Descending=$true}
+            $latestTag = $sorted[0].Tag
             Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          # Fallback: ensure tags are fetched and inspect local tags
+          git fetch --tags --prune || true
+          $local = git tag -l "v[0-9]*.[0-9]*.[0-9]*"
+          if ($local) {
+            $sortedTags = $local | ForEach-Object {
+              if ($_ -match 'v?(\d+)\.(\d+)\.(\d+)') {
+                [PSCustomObject]@{ Tag = $_; Major = [int]$Matches[1]; Minor = [int]$Matches[2]; Patch = [int]$Matches[3] }
+              }
+            } | Sort-Object -Property @{Expression={$_.Major};Descending=$true}, @{Expression={$_.Minor};Descending=$true}, @{Expression={$_.Patch};Descending=$true}
+            if ($sortedTags.Count -gt 0) {
+              $latestTag = $sortedTags[0].Tag
+              Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
+            } else {
+              Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
+            }
           } else {
             Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
           }
@@ -197,6 +224,33 @@ jobs:
 
       - name: List artifacts
         run: ls -R artifacts
+
+      - name: Checkout repository for tagging
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure release tag exists and push
+        if: needs.prepare.outputs.version != ''
+        shell: bash
+        run: |
+          set -e
+          TAG="${{ needs.prepare.outputs.version }}"
+          echo "Preparing tag: $TAG"
+          if [ -z "$TAG" ]; then
+            echo "No tag provided; cannot create release"
+            exit 1
+          fi
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists locally"
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            echo "Created local tag $TAG"
+          fi
+
+          # Push tag (skip errors if it already exists on remote)
+          git push origin "$TAG" || echo "Tag push failed or already exists on remote"
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
