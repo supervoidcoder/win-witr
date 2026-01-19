@@ -21,8 +21,14 @@ when this is done I will submit this to winget!!
 
 **Why did I even make this?**
 
-I heard that the original dev wasn't planning to make a Windows version for it.
-He was probably right.
+I made this before the original dev created a Windows version, so I created it since no one else had.
+I realized someone else also beat me to the punch with witr-win, which is similar, but it has very big differnces:
+
+- It's made in Rust. 
+- The binaries on the release page only show one .exe and it's a whopping 5MB! I don't know how that dev got it to be that big, but that's not optimal for a small cli tool. (I know why, it's vibe coded)
+- Again, it only has one binary. No separate binaries for 32-bit, 64-bit, and windows on ARM (for those of you using surface laptops.)
+
+
 Oh it is such a pain to work with the windows kernel.
 Windows is the most popular and the most user friendly and organized looking OS but the SECOND you peek inside it is such a garbling mess of WEIRD stuff. It's so weird.
 Some quirks I've noticed since I started working on this:
@@ -41,5 +47,14 @@ Please do not submit PRs with AI-generated content.
 Trust me, you can use AI for quick little JS or Python crap, but you do NOT want AI making a whole C++ app. It'd allocate 16/8GB of ram without hesitation. It'll explode your computer. Bamboozle it. Flabbergast it. Flabberbamboozle it. 
 
 Uh,
+
+
+anyways...
+
+## Roadmap
+
+[ ] Get a working release with all the functions using the current system.
+[ ] Migrate to direct ntdll.dll calls instead of the current toolhelp32 snapshotting for performance. It's basically micro-optimizations but for fun.
+[ ] Maybe write one of those fancy kernel modules. I'd need to be very careful though XD
 
 -supervoidcoder
