@@ -279,7 +279,7 @@ CloseHandle(hSnapshot);
             }
         if (i > 0) {
         
-        std::cout << "\u2514\u2500 ";  // it's the little thingy thing └─ unicode from witr but escaped s
+        std::cout << "\u2514\u2500 ";  // it's the little thingy thing └─ unicode from witr 
         }   
         std::cout << exeNames[i] << " (PID " << pidNames[i] << ")" << std::endl;
 
