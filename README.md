@@ -36,7 +36,7 @@ Some quirks I've noticed since I started working on this:
 
 ## AI assistance disclaimer
 
-A code review assistant known as CodeRabbit (@coderabbitai) will be in this repo to assist me with reviewing code.
+A code review assistant known as CodeRabbit (@coderabbitai) will be in this repo to assist me with reviewing code. Also, the github actions are vibe coded. No one cares about those.
 Please do not submit PRs with AI-generated content.
 Trust me, you can use AI for quick little JS or Python crap, but you do NOT want AI making a whole C++ app. It'd allocate 16/8GB of ram without hesitation. It'll explode your computer. Bamboozle it. Flabbergast it. Flabberbamboozle it. 
 
