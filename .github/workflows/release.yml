@@ -41,10 +41,10 @@ jobs:
           }
 
           if ($sourceChanged) {
-            Write-Output "should_release=true" >> $env:GITHUB_OUTPUT
+            "should_release=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             Write-Output "Source files changed - will proceed with release"
           } else {
-            Write-Output "should_release=false" >> $env:GITHUB_OUTPUT
+            "should_release=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             Write-Output "No source files changed - skipping release"
           }
 
@@ -75,7 +75,7 @@ jobs:
           if ($candidates.Count -gt 0) {
             $sorted = $candidates | Sort-Object -Property @{Expression={$_.Major};Descending=$true}, @{Expression={$_.Minor};Descending=$true}, @{Expression={$_.Patch};Descending=$true}
             $latestTag = $sorted[0].Tag
-            Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
+            "latest_tag=$latestTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
           }
 
@@ -90,12 +90,12 @@ jobs:
             } | Sort-Object -Property @{Expression={$_.Major};Descending=$true}, @{Expression={$_.Minor};Descending=$true}, @{Expression={$_.Patch};Descending=$true}
             if ($sortedTags.Count -gt 0) {
               $latestTag = $sortedTags[0].Tag
-              Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
+              "latest_tag=$latestTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             } else {
-              Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
+              "latest_tag=v0.0.0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             }
           } else {
-            Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
+            "latest_tag=v0.0.0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
       - name: Determine next version
@@ -110,8 +110,8 @@ jobs:
             $patch = [int]$Matches[3]
             $patch = $patch + 1
             $newVersion = "v$major.$minor.$patch"
-            Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
-            Write-Output "version_number=$major.$minor.$patch" >> $env:GITHUB_OUTPUT
+            "version=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "version_number=$major.$minor.$patch" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
             Write-Error "Could not parse version from tag: $latestTag"
             exit 1
@@ -160,9 +160,9 @@ jobs:
           $releaseNotes += "`n---`n*Commit: $commitSha*"
 
           $delimiter = "EOF_$(Get-Random)"
-          Write-Output "notes<<$delimiter" >> $env:GITHUB_OUTPUT
-          Write-Output $releaseNotes >> $env:GITHUB_OUTPUT
-          Write-Output $delimiter >> $env:GITHUB_OUTPUT
+          "notes<<$delimiter" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $releaseNotes | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $delimiter | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
   build:
     name: Build matrix for multiple Windows architectures
