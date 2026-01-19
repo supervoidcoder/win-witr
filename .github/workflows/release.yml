@@ -184,7 +184,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
-          name: Release win-witr ${{ needs.prepare.outputs.version }}
+          name:  win-witr ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.notes }}
           files: artifacts/*.exe
           draft: false
