@@ -39,6 +39,12 @@ Some quirks I've noticed since I started working on this:
 
 
 
+## How to build
+
+Simple: ` cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe`
+You just need the Visual Studio Build Tools installed, and you can run that command in the terminal to build the executable. 
+Also, we might split the code into multiple files later on, but for now it's just one MASSIVE file. ~You know what else is~
+
 
 ## AI assistance disclaimer
 
