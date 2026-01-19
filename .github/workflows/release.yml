@@ -20,6 +20,23 @@ jobs:
       notes: ${{ steps.parse_commit.outputs.notes }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install ARM64 MSVC toolchain
+        if: matrix.arch == 'arm64'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+          if (-not $vsPath) {
+            throw "Visual Studio installation not found."
+          }
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          & $installer modify --installPath "$vsPath" --quiet --norestart --nocache `
+            --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 `
+            --add Microsoft.VisualStudio.Component.VC.Tools.ARM64EC
+          if ($LASTEXITCODE -ne 0) {
+            throw "vs_installer failed with exit code $LASTEXITCODE"
+          }
         with:
           fetch-depth: 0
 
