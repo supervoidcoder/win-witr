@@ -145,6 +145,7 @@ jobs:
     strategy:
       matrix:
         arch: [x64, x86, arm64]
+        
     steps:
       - uses: actions/checkout@v4
 
@@ -152,6 +153,7 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
+          host_arch: ${{ matrix.arch == 'arm64' && 'x64' || matrix.arch }}
 
       - name: Compile for ${{ matrix.arch }}
         shell: cmd
