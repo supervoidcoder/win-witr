@@ -246,6 +246,12 @@ jobs:
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository for tagging
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -263,12 +269,6 @@ jobs:
           find artifacts -mindepth 1 -type d -delete || echo "Warning: Failed to delete some subdirectories in artifacts/ - this may indicate remaining files or permission issues"
           echo "Flattened artifacts directory:"
           ls -la artifacts/
-
-      - name: Checkout repository for tagging
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Ensure release tag exists and push
         if: needs.prepare.outputs.version != ''
