@@ -153,7 +153,6 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
-          host_arch: ${{ matrix.arch == 'arm64' && 'x64' || matrix.arch }}
 
       - name: Compile for ${{ matrix.arch }}
         shell: cmd
@@ -188,7 +187,7 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.version }}
           name:  win-witr ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.notes }}
-          files: artifacts/*.exe
+          files: artifacts/*/*.exe
           draft: false
           prerelease: true
         env:
