@@ -298,7 +298,7 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.version }}
           name:  win-witr ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.notes }}
-          files: artifacts/*/*.exe
+          files: artifacts/**/*.exe
           draft: false
           prerelease: true
         env:
