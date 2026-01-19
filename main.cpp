@@ -255,7 +255,7 @@ UPDATE: This is done now!!
         } while (Process32Next(hSnapshot, &pe32));
 
     }
-    
+     
     if (!found) break;
     }
 CloseHandle(hSnapshot);
