@@ -236,6 +236,9 @@ jobs:
         shell: bash
         run: |
           set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
           TAG="${{ needs.prepare.outputs.version }}"
           echo "Preparing tag: $TAG"
           if [ -z "$TAG" ]; then
