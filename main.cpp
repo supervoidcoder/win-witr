@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2025 supervoidcoder
 // This file is part of win-witr.
- 
+
 #include <windows.h>
 #include <tlhelp32.h>
 #include <iostream>
