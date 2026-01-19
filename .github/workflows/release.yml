@@ -166,13 +166,9 @@ jobs:
           REM Map architecture for cross-compilation (host_target)
           REM GitHub Actions windows-latest runners are x64, so we need x64_<target> for cross-compilation
           set "TARGET_ARCH=${{ matrix.arch }}"
-          if "%TARGET_ARCH%"=="x86" (
-            set "VCVARS_ARCH=x64_x86"
-          ) else if "%TARGET_ARCH%"=="arm64" (
-            set "VCVARS_ARCH=x64_arm64"
-          ) else (
-            set "VCVARS_ARCH=%TARGET_ARCH%"
-          )
+          set "VCVARS_ARCH=%TARGET_ARCH%"
+          if "%TARGET_ARCH%"=="x86" set "VCVARS_ARCH=x64_x86"
+          if "%TARGET_ARCH%"=="arm64" set "VCVARS_ARCH=x64_arm64"
 
           REM Initialize environment for the target architecture
           call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" %VCVARS_ARCH%
