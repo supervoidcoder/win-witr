@@ -183,7 +183,7 @@ jobs:
             $releaseNotes += "`n$commitBody`n"
           }
 
-Write-Output "DEBUG: releaseNotes: $releaseNotes"
+          Write-Output "DEBUG: releaseNotes: $releaseNotes"
           $commitSha = git rev-parse --short HEAD
           $releaseNotes += "`n---`n*Commit: $commitSha*"
 
