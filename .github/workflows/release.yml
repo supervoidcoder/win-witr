@@ -256,8 +256,10 @@ jobs:
 
       - name: Flatten artifact directory structure
         run: |
-          find artifacts -name "*.exe" -exec mv {} artifacts/ \;
-          find artifacts -mindepth 1 -type d -delete
+          set -e
+          echo "Flattening artifact directory structure..."
+          find artifacts -name "*.exe" -type f -exec mv -n {} artifacts/ \;
+          find artifacts -mindepth 1 -type d -delete || true
           echo "Flattened artifacts directory:"
           ls -la artifacts/
 
