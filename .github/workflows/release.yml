@@ -155,7 +155,6 @@ jobs:
 
       - name: Compile for ${{ matrix.arch }}
         shell: cmd
-        
         run: |
           set outName=win-witr-${{ matrix.arch }}.exe
           cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:%outName%
