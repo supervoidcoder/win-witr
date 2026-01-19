@@ -108,13 +108,10 @@ jobs:
             $typeLabel = switch ($type) {
               'fix' { '🐛 Fix' }
               'feat' { '✨ Feature' }
-              'docs' { '📚 Documentation' }
-              'style' { '💄 Style' }
               'refactor' { '♻️ Refactor' }
               'test' { '✅ Test' }
               'chore' { '🔧 Chore' }
               'perf' { '⚡ Performance' }
- 
               'build' { '📦 Build' }
               'revert' { '⏪ Revert' }
               default { '📝 Update' }
