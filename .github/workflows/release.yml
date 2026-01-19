@@ -114,7 +114,7 @@ jobs:
               'test' { '✅ Test' }
               'chore' { '🔧 Chore' }
               'perf' { '⚡ Performance' }
-              'ci' { '👷 CI' }
+ 
               'build' { '📦 Build' }
               'revert' { '⏪ Revert' }
               default { '📝 Update' }
