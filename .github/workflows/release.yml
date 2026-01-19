@@ -254,6 +254,16 @@ jobs:
       - name: List artifacts
         run: ls -R artifacts
 
+      - name: Flatten artifact directory structure
+        run: |
+          set -e
+          echo "Flattening artifact directory structure..."
+          find artifacts -name "*.exe" -type f -exec mv -n {} artifacts/ \;
+          echo "Removing empty subdirectories..."
+          find artifacts -mindepth 1 -type d -delete || echo "Warning: Failed to delete some subdirectories in artifacts/ - this may indicate remaining files or permission issues"
+          echo "Flattened artifacts directory:"
+          ls -la artifacts/
+
       - name: Checkout repository for tagging
         uses: actions/checkout@v4
         with:
@@ -298,7 +308,7 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.version }}
           name:  win-witr ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.notes }}
-          files: artifacts/**/*.exe
+          files: artifacts/*.exe
           draft: false
           prerelease: true
         env:
