@@ -318,11 +318,28 @@ jobs:
             echo "Release '$TAG' does not exist."
           fi
 
+          echo "Locating artifacts..."
+          # Find the files anywhere in the current directory, robust to structure changes
+          FILE_X64=$(find . -type f -name "win-witr-x64.exe" | head -n 1)
+          FILE_X86=$(find . -type f -name "win-witr-x86.exe" | head -n 1)
+          FILE_ARM64=$(find . -type f -name "win-witr-arm64.exe" | head -n 1)
+
+          echo "Found x64 artifact: $FILE_X64"
+          echo "Found x86 artifact: $FILE_X86"
+          echo "Found arm64 artifact: $FILE_ARM64"
+
+          if [[ -z "$FILE_X64" || -z "$FILE_X86" || -z "$FILE_ARM64" ]]; then
+            echo "Error: Could not locate all expected artifacts."
+            echo "Searching for any .exe files:"
+            find . -name "*.exe"
+            exit 1
+          fi
+
           echo "Creating release '$TAG'..."
           gh release create "$TAG" \
-            artifacts/win-witr-x64.exe \
-            artifacts/win-witr-x86.exe \
-            artifacts/win-witr-arm64.exe \
+            "$FILE_X64" \
+            "$FILE_X86" \
+            "$FILE_ARM64" \
             --title "$TITLE" \
             --notes "$NOTES" \
             --prerelease
