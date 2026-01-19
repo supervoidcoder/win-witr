@@ -260,7 +260,7 @@ jobs:
           echo "Flattening artifact directory structure..."
           find artifacts -name "*.exe" -type f -exec mv -n {} artifacts/ \;
           echo "Removing empty subdirectories..."
-          find artifacts -mindepth 1 -type d -delete || echo "Warning: Some directories could not be deleted"
+          find artifacts -mindepth 1 -type d -delete || echo "Warning: Failed to delete some subdirectories in artifacts/ - this may indicate remaining files or permission issues"
           echo "Flattened artifacts directory:"
           ls -la artifacts/
 
