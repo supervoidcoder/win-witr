@@ -28,25 +28,30 @@ jobs:
         id: check_files
         shell: pwsh
         run: |
+          Write-Output "DEBUG: Starting check_files"
+          Write-Output "DEBUG: PR Event Data - Base: ${{ github.event.pull_request.base.sha }} - Head: ${{ github.event.pull_request.head.sha }}"
+          
           $changedFiles = git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
-          Write-Output "Changed files:"
+          Write-Output "DEBUG: Changed files found:"
           Write-Output $changedFiles
 
           $sourceChanged = $false
           foreach ($file in $changedFiles) {
             if ($file -match '\.(cpp|h|hpp|c|cc|cxx)$') {
               $sourceChanged = $true
-              Write-Output "Source file changed: $file"
+              Write-Output "DEBUG: Source file changed: $file"
               break
             }
           }
 
+          Write-Output "DEBUG: sourceChanged is $sourceChanged"
+
           if ($sourceChanged) {
             Write-Output "should_release=true" >> $env:GITHUB_OUTPUT
-            Write-Output "Source files changed - will proceed with release"
+            Write-Output "DEBUG: Setting should_release=true"
           } else {
             Write-Output "should_release=false" >> $env:GITHUB_OUTPUT
-            Write-Output "No source files changed - skipping release"
+            Write-Output "DEBUG: Setting should_release=false"
           }
 
       - name: Get latest release tag
@@ -56,33 +61,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          Write-Output "DEBUG: Starting get_latest_tag"
           $repo = "${{ github.repository }}"
+          Write-Output "DEBUG: Repo is $repo"
+          
           $headers = @{"Authorization" = "token $env:GITHUB_TOKEN"; "Accept" = "application/vnd.github.v3+json"}
 
           # Try GitHub Releases API first (includes prereleases)
           try {
+            Write-Output "DEBUG: Fetching releases from API..."
             $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=100" -Headers $headers -UseBasicParsing
+            Write-Output "DEBUG: Fetched $($releases.Count) releases"
           } catch {
+            Write-Output "DEBUG: Failed to fetch releases from API: $_"
             $releases = @()
           }
 
           $candidates = @()
           foreach ($r in $releases) {
+            Write-Output "DEBUG: Checking release tag: $($r.tag_name)"
             if ($r.tag_name -match 'v?(\d+)\.(\d+)\.(\d+)') {
               $candidates += [PSCustomObject]@{ Tag = $r.tag_name; Major = [int]$Matches[1]; Minor = [int]$Matches[2]; Patch = [int]$Matches[3] }
             }
           }
 
           if ($candidates.Count -gt 0) {
+           Write-Output "DEBUG: Found valid candidates in releases."
            $sorted = $candidates | Sort-Object -Property @{Expression={$_.Major};Descending=$true}, @{Expression={$_.Minor};Descending=$true}, @{Expression={$_.Patch};Descending=$true}
            $latestTag = $sorted[0].Tag
+           Write-Output "DEBUG: Selected latest tag from API: $latestTag"
            Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
            exit 0
           }
 
           # Fallback: ensure tags are fetched and inspect local tags
+          Write-Output "DEBUG: Fallback to local git tags"
           git fetch --tags --prune || true
           $local = git tag -l "v[0-9]*.[0-9]*.[0-9]*"
+          Write-Output "DEBUG: Local tags found: $local"
+          
           if ($local) {
             $sortedTags = $local | ForEach-Object {
               if ($_ -match 'v?(\d+)\.(\d+)\.(\d+)') {
@@ -91,11 +108,14 @@ jobs:
             } | Sort-Object -Property @{Expression={$_.Major};Descending=$true}, @{Expression={$_.Minor};Descending=$true}, @{Expression={$_.Patch};Descending=$true}
             if ($sortedTags.Count -gt 0) {
               $latestTag = $sortedTags[0].Tag
+              Write-Output "DEBUG: Selected latest tag from local tags: $latestTag"
               Write-Output "latest_tag=$latestTag" >> $env:GITHUB_OUTPUT
             } else {
+              Write-Output "DEBUG: No valid semantic version tags found locally. Defaulting to v0.0.0"
               Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
             }
           } else {
+            Write-Output "DEBUG: No local tags found. Defaulting to v0.0.0"
             Write-Output "latest_tag=v0.0.0" >> $env:GITHUB_OUTPUT
           }
 
@@ -105,12 +125,15 @@ jobs:
         shell: pwsh
         run: |
           $latestTag = "${{ steps.get_latest_tag.outputs.latest_tag }}"
+          Write-Output "DEBUG: Starting next_version. Input latestTag: $latestTag"
+          
           if ($latestTag -match 'v?(\d+)\.(\d+)\.(\d+)') {
             $major = [int]$Matches[1]
             $minor = [int]$Matches[2]
             $patch = [int]$Matches[3]
             $patch = $patch + 1
             $newVersion = "v$major.$minor.$patch"
+            Write-Output "DEBUG: Calculated new version: $newVersion"
             Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
             Write-Output "version_number=$major.$minor.$patch" >> $env:GITHUB_OUTPUT
           } else {
@@ -123,7 +146,10 @@ jobs:
         id: parse_commit
         shell: pwsh
         run: |
+          Write-Output "DEBUG: Starting parse_commit"
           $commitMsg = git log -1 --pretty=%B
+          Write-Output "DEBUG: Commit message: $commitMsg"
+          
           $commitSubject = $commitMsg.Split("`n")[0]
           $commitBodyLines = $commitMsg.Split("`n") | Select-Object -Skip 1
           $commitBody = ($commitBodyLines -join "`n").Trim()
@@ -157,10 +183,12 @@ jobs:
             $releaseNotes += "`n$commitBody`n"
           }
 
+Write-Output "DEBUG: releaseNotes: $releaseNotes"
           $commitSha = git rev-parse --short HEAD
           $releaseNotes += "`n---`n*Commit: $commitSha*"
 
           $delimiter = "EOF_$(Get-Random)"
+          Write-Output "DEBUG: Writing notes to output using delimiter $delimiter"
           Write-Output "notes<<$delimiter" >> $env:GITHUB_OUTPUT
           Write-Output $releaseNotes >> $env:GITHUB_OUTPUT
           Write-Output $delimiter >> $env:GITHUB_OUTPUT
@@ -237,6 +265,10 @@ jobs:
         shell: bash
         run: |
           set -e
+          echo "DEBUG: Ensure Release Tag Exists"
+          echo "DEBUG: received version: '${{ needs.prepare.outputs.version }}'"
+          echo "DEBUG: received sha: $(git rev-parse HEAD)"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
@@ -247,13 +279,17 @@ jobs:
             exit 1
           fi
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists locally"
+            echo "DEBUG: Tag $TAG already exists locally"
           else
-            git tag -a "$TAG" -m "Release $TAG"
-            echo "Created local tag $TAG"
+            # Explicitly tag the HEAD sha to match the checked out state
+            HEAD_SHA=$(git rev-parse HEAD)
+            echo "DEBUG: Creating tag $TAG on $HEAD_SHA"
+            git tag -a "$TAG" -m "Release $TAG" "$HEAD_SHA"
+            echo "DEBUG: Created local tag $TAG"
           fi
 
           # Push tag (skip errors if it already exists on remote)
+          echo "DEBUG: Pushing tag $TAG"
           git push origin "$TAG" || echo "Tag push failed or already exists on remote"
 
       - name: Create Release and Upload Assets
