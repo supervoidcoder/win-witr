@@ -308,8 +308,12 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.version }}
           name:  win-witr ${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.notes }}
-          files: artifacts/*.exe
+          files: |
+            artifacts/win-witr-x64/win-witr-x64.exe
+            artifacts/win-witr-x86/win-witr-x86.exe
+            artifacts/win-witr-arm64/win-witr-arm64.exe
           draft: false
           prerelease: true
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
