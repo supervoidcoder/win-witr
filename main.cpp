@@ -247,7 +247,7 @@ UPDATE: This is done now!!
                         pid = 0; 
                 } else {
 
-                    pid = parentPid; 
+                    pid = parentPid;
                 }
                 found = true;
                 break;
