@@ -13,3 +13,16 @@ jobs:
       - name: Compile
         run: |
           cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
+      - name: Run Tests
+        shell: pwsh
+        run: |
+          # Run all test .bat files
+          Get-ChildItem -Path tests -Recurse -Filter *.bat | ForEach-Object {
+            Write-Host "Running test: $($_.FullName)"
+            & $_.FullName
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Test failed: $($_.Name)"
+              exit 1
+            }
+          }
+        
