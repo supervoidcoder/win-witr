@@ -1,1 +1,1 @@
-win-witr pid 4
+win-witr --pid 4
