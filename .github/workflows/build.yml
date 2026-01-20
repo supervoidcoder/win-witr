@@ -11,8 +11,15 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Compile
+        shell: pwsh
         run: |
           cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
+              # Add the current directory (where win-witr.exe was compiled) to PATH
+              $env:PATH = "$PWD;$env:PATH"
+              
+              # Verify the exe is accessible
+              Write-Host "Checking win-witr.exe availability..."
+              win-witr --version
       - name: Run Tests
         shell: pwsh
         run: |
