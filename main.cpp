@@ -306,6 +306,17 @@ CloseHandle(hSnapshot);
 
 void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    // The above little handle opener is currently a somwehat "agressive" flag, since it
+    // Requests read access directly to the process' actual memory. This can get us rejected if called
+    // on a very high privilege process, such as lsass.exe This means that we can't read the memory
+    // even WITH SeDebugPrivilege enabled. Windows doesn't want ya sneaking around in that!
+    // So for that reason, I've added  a fallback that only requests limited memory access, 
+    // which should hopefully allow us to read some informatoin about hte process
+    if (!hProcess && GetLastError() == ERROR_ACCESS_DENIED) {
+        // This lets us know if the error was denied specifically for access reasons. THis will initiate our little fallback.
+         hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid); // poor little guy getting limited of his full power
+         // This has been tested and it does let us get info about lsass.exe and even System! Woohoo!
+    }
     if (!hProcess) {
         if (IsVirtualTerminalModeEnabled()) {
             std::cerr << "\033[1;31mError:\033[0m Could not open process with PID " 
