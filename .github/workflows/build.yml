@@ -1,6 +1,8 @@
 name: Build Check
-on: [pull_request, push]
-
+on:
+  push:
+    branches: [ main ]
+    
 jobs:
   build-windows:
     runs-on: windows-latest
