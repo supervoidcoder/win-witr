@@ -38,6 +38,7 @@ Some quirks I've noticed since I started working on this:
 - Everything in Windows that's stupid like this is simply because of legacy reasons. While newer versions of Windows look like a shiny new (although heavily bloated) OS with a nice user-friendly UI and a whole crap ton of WebView2's and RAM hogs, the kernel is still the same mess of code that was written like 30 years ago. To cut them some slack, the Windows NT kernel was worked on by a bunch of people simultaneously which can lead to conflicting ideas, decisions, and other stuff. Linux, on the other hand, was written by one person (Linus Torvalds) and a small team of volunteers when it began, and every addition is still carefuly scrutinized by Torvalds himself, so it has a much more consistent design than whatever this monstrosity is. Anyways, the other reason is compatibility. Even if Microsoft _wants_ to change something, millions of facilities use custom-written applications that rely on old behavior, especially things like hospitals and other infrastructure. (I bet banks are still written in COBOL or FORTRAN tho lol)
 - Every new version of Windows is just a coat of paint over the other. Yes, this is common knowledge, and related to the previous statement, but it's still something worthy of pointing out just because how bad it was done. It's like the landlord treatment. Every shiny new Windows version adds new features on top of the previous version. While a large variety of the features are good (except Microsoft Copilot, which is never useful and will probably never be; not to be confused with GitHub Copilot, which is somewhat competent), most of these add an extra layer of complexity since they have to be deeply connected to 30 years of Microslop's mistakes, which they cannot escape from as it haunts them in every compatibility issue that comes up.
 - Okay, I've been roasting Microsoft up and down all day. While their initial start with the NT kernel code isn't exactly great, let's not forget Windows is still a software engineering marvel due to its seamless compatibility with virtually any piece of hardware. It is the main reason why it is so widely used. And for that reason, it is with utmost regret that we shall mourn for the fact Microsoft themselves has forgotten on what Windows really is, and decided to violently pump a bunch of LLMs down Windows' supratrochlear vein and slopify it into a nightmare-haunting pile of toxic, boiling, aneurysm-inducing, dignity-erasing garbage people are forced to use.
+- Windows requires admin privileges for almost anything. It's meant to be for security, obviously, but it feels just a tad excessive compared to Linux.
 
 
 ## How to build
@@ -67,8 +68,8 @@ anyways...
 
 ## Roadmap
 
-[ ] Get a working release with all the functions using the current system.
-[ ] Migrate to direct ntdll.dll calls instead of the current toolhelp32 snapshotting for performance. It's basically micro-optimizations but for fun.
-[ ] Maybe write one of those fancy kernel modules. I'd need to be very careful though XD
+- [ ] Get a working release with all the functions using the current system.
+- [ ] Migrate to direct ntdll.dll calls instead of the current toolhelp32 snapshotting for performance. It's basically micro-optimizations but for fun.
+- [ ] Maybe write one of those fancy kernel modules. I'd need to be very careful though XD
 
 -supervoidcoder
