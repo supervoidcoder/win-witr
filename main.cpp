@@ -267,7 +267,7 @@ UPDATE: This is done now!!
     // it must be alive.
     if (Process32First(hSnapshot, &pe32)) {
         do {
-            if (pe32.th32ProcessID == pid) {
+            
                // this time, our target pid is already stored at the very top of our list.
                // this means we don't have to add target pid stuff.
                // TODO: (for future optimization) we should probably move this before the 
@@ -281,13 +281,13 @@ UPDATE: This is done now!!
                     // you might've noticed this doesn't have an emplace_front() like emplace_back() since 
                     // it's inefficient and the creators of the vector lib didn't do it
                     pidNames.emplace(pidNames.begin(), pe32.th32ProcessID);
-
+                    ULONGLONG childTime == GetProcessCreationTime(pe32.th32ProcessID)
                 }
                 
 
                 found = true;
                 break;
-            }
+            
         } while (Process32Next(hSnapshot, &pe32));
 
     }
@@ -313,9 +313,13 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
                 std::cout << "  "; // this adds indentation
             }
         if (i > 0) {
-        
-        std::cout << "└─ ";  // it's the little thingy thing └─ unicode from witr 
+        if (IsVirtualTerminalModeEnabled) {
+        std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
+        } else {
+        std::cout << "└─ ";  
+        }
         }   
+        
         std::cout << exeNames[i] << " (PID " << pidNames[i] << ")" << std::endl;
 
     }
