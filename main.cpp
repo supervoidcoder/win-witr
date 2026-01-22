@@ -280,7 +280,7 @@ UPDATE: This is done now!!
                     // in this case, we are adding stuff to the front of the list, since we're looking at children
                     // you might've noticed this doesn't have an emplace_front() like emplace_back() since 
                     // it's inefficient and the creators of the vector lib didn't do it
-                    ULONGLONG parentTime = GetProcessCreationTime(pe32);
+                    pidNames.emplace(pidNames.begin(), pe32.th32ProcessID)
 
                 }
                 
