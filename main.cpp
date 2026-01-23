@@ -314,14 +314,9 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     
         // surprise we have nested for loops 
         for (size_t j = 0; j < i; j++) {
-            if (i > pidNames.size() - children) {
+            
                 std::cout << "  "; // this adds indentation
-            }
-            else {
-
-            }
-        }
-        
+            
         if (i > 0) {
         if (IsVirtualTerminalModeEnabled()) {
         std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
@@ -371,7 +366,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     }
 } 
     }
-}}
+
  
 
 
