@@ -325,7 +325,19 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
         }
         }   // peak indentation
         if (IsVirtualTerminalModeEnabled) {
-        std::cout << exeNames[i] << " (PID " << pidNames[i] << ")" << std::endl;
+            if (targetpid == pidNames[i])  {
+                std::cout << "\033[1;32m" << exeNames[i] << " (PID " << pidNames[i] << ")" << "\033[0m" << std::endl;
+            } else {
+                std::cout   << exeNames[i] << " (PID " << pidNames[i] << ") ⬅"  << std::endl;
+
+                // since we don't have virtual terminal colors to highlight it,
+                // we're gonna use arrows
+            } else{
+                std::cout   << exeNames[i] << " (PID " << pidNames[i] << ")"  << std::endl;
+            }
+            
+
+        
         }
 
     }
