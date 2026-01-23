@@ -371,7 +371,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     }
 } 
     }
-}
+}}
  
 
 
