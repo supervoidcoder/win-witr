@@ -331,7 +331,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
             std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
         } else {
             std::cout << "└─ ";  
-        }
+        }}
            
         if (IsVirtualTerminalModeEnabled()) {
             if (targetpid == pidNames[i])  {
@@ -356,7 +356,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
         
         }
 
-    }
+    
     
    
 } 
