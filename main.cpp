@@ -314,6 +314,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     
         // surprise we have nested for loops 
         for (size_t j = 0; j < i; j++) {
+            if (i > pidNames.size() - children) {
                 std::cout << "  "; // this adds indentation
             }
         if (i > 0) {
@@ -327,13 +328,20 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
             if (targetpid == pidNames[i])  {
                 std::cout << "\033[1;32m" << exeNames[i] << " (PID " << pidNames[i] << ")" << "\033[0m" << std::endl;
             } else {
-                std::cout   << exeNames[i] << " (PID " << pidNames[i] << ") ⬅"  << std::endl;
+               std::cout   << exeNames[i] << " (PID " << pidNames[i] << ")"  << std::endl;
+            } 
+            }else {
+                if (targetpid == pidNames[i])  {
+                 std::cout   << exeNames[i] << " (PID " << pidNames[i] << ") ⬅"  << std::endl;
 
                 // since we don't have virtual terminal colors to highlight it,
                 // we're gonna use arrows
-            } 
-            }else {
-                std::cout   << exeNames[i] << " (PID " << pidNames[i] << ")"  << std::endl;
+                }
+                else {
+                    std::cout   << exeNames[i] << " (PID " << pidNames[i] << ")"  << std::endl;
+                }
+
+                
             
 
         
@@ -349,9 +357,9 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     if (lastParentPid != 0 && lastParentPid != 4 && 
         (lastParentTime == 0 || lastParentTime >= lastChildTime)) {
         for (size_t j = 0; j < nameSize; j++) {
-            if (children > 0) {
+            
             std::cout << "  ";
-            children--;
+            
             }
         }
         std::cout << "└─ [Parent Process Exited]" << std::endl;
