@@ -317,6 +317,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
             if (i > pidNames.size() - children) {
                 std::cout << "  "; // this adds indentation
             }
+        }
         if (i > 0) {
         if (IsVirtualTerminalModeEnabled()) {
         std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
