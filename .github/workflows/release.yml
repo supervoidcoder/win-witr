@@ -156,7 +156,7 @@ jobs:
           Write-Output "DEBUG: Head SHA: $headSha"
           
           # Get all commit messages in the PR
-          $commits = git log --pretty=format:"%H|%s|%b" "$baseSha..$headSha"
+          $commits = @(git log --pretty=format:"%H|%s|%b" "$baseSha..$headSha")
           Write-Output "DEBUG: Found $($commits.Count) commits in PR"
           
           # Initialize categorized lists
@@ -168,6 +168,8 @@ jobs:
           $tests = @()
           $chores = @()
           $builds = @()
+          $ci = @()
+          $style = @()
           $reverts = @()
           $others = @()
           
@@ -201,6 +203,8 @@ jobs:
                 'test' { $tests += $entry }
                 'chore' { $chores += $entry }
                 'build' { $builds += $entry }
+                'ci' { $ci += $entry }
+                'style' { $style += $entry }
                 'revert' { $reverts += $entry }
                 default { $others += "- $subject ($commitHash)" }
               }
@@ -253,6 +257,16 @@ jobs:
             $releaseNotes += ($chores -join "`n") + "`n`n"
           }
           
+          if ($ci.Count -gt 0) {
+            $releaseNotes += "### 🔄 CI/CD`n"
+            $releaseNotes += ($ci -join "`n") + "`n`n"
+          }
+          
+          if ($style.Count -gt 0) {
+            $releaseNotes += "### 💄 Style`n"
+            $releaseNotes += ($style -join "`n") + "`n`n"
+          }
+          
           if ($reverts.Count -gt 0) {
             $releaseNotes += "### ⏪ Reverts`n"
             $releaseNotes += ($reverts -join "`n") + "`n`n"
@@ -264,7 +278,6 @@ jobs:
           }
           
           Write-Output "DEBUG: releaseNotes: $releaseNotes"
-          $headCommitSha = git rev-parse --short HEAD
           $releaseNotes += "---`n*Based on commits from $baseSha to $headSha*"
 
           $delimiter = "EOF_$(Get-Random)"
