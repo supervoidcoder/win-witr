@@ -147,45 +147,125 @@ jobs:
         shell: pwsh
         run: |
           Write-Output "DEBUG: Starting parse_commit"
-          $commitMsg = git log -1 --pretty=%B
-          Write-Output "DEBUG: Commit message: $commitMsg"
           
-          $commitSubject = $commitMsg.Split("`n")[0]
-          $commitBodyLines = $commitMsg.Split("`n") | Select-Object -Skip 1
-          $commitBody = ($commitBodyLines -join "`n").Trim()
-
+          # Get all commits from the PR (base to head)
+          $baseSha = "${{ github.event.pull_request.base.sha }}"
+          $headSha = "${{ github.event.pull_request.head.sha }}"
+          
+          Write-Output "DEBUG: Base SHA: $baseSha"
+          Write-Output "DEBUG: Head SHA: $headSha"
+          
+          # Get all commit messages in the PR
+          $commits = git log --pretty=format:"%H|%s|%b" "$baseSha..$headSha"
+          Write-Output "DEBUG: Found $($commits.Count) commits in PR"
+          
+          # Initialize categorized lists
+          $features = @()
+          $fixes = @()
+          $performance = @()
+          $refactors = @()
+          $docs = @()
+          $tests = @()
+          $chores = @()
+          $builds = @()
+          $reverts = @()
+          $others = @()
+          
+          # Parse each commit
+          foreach ($line in $commits) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            
+            $parts = $line -split '\|', 3
+            if ($parts.Count -lt 2) { continue }
+            
+            $commitHash = $parts[0].Substring(0, [Math]::Min(7, $parts[0].Length))
+            $subject = $parts[1]
+            $body = if ($parts.Count -eq 3) { $parts[2] } else { "" }
+            
+            Write-Output "DEBUG: Processing commit $commitHash : $subject"
+            
+            # Parse conventional commit format
+            if ($subject -match '^(fix|feat|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?:\s*(.+)$') {
+              $type = $Matches[1]
+              $scope = if ($Matches[2]) { $Matches[2] } else { "" }
+              $description = $Matches[3]
+              
+              $entry = "- $description ($commitHash)"
+              
+              switch ($type) {
+                'feat' { $features += $entry }
+                'fix' { $fixes += $entry }
+                'perf' { $performance += $entry }
+                'refactor' { $refactors += $entry }
+                'docs' { $docs += $entry }
+                'test' { $tests += $entry }
+                'chore' { $chores += $entry }
+                'build' { $builds += $entry }
+                'revert' { $reverts += $entry }
+                default { $others += "- $subject ($commitHash)" }
+              }
+            } else {
+              # Non-conventional commit
+              $others += "- $subject ($commitHash)"
+            }
+          }
+          
+          # Build release notes
           $releaseNotes = "## Changes`n`n"
-
-          if ($commitSubject -match '^(fix|feat|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?:\s*(.+)$') {
-            $type = $Matches[1]
-            $description = $Matches[3]
-            $typeLabel = switch ($type) {
-              'fix' { '🐛 Fix' }
-              'feat' { '✨ Feature' }
-              'refactor' { '♻️ Refactor' }
-              'test' { '✅ Test' }
-              'chore' { '🔧 Chore' }
-              'perf' { '⚡ Performance' }
-              'build' { '📦 Build' }
-              'revert' { '⏪ Revert' }
-              default { '📝 Update' }
-            }
-            $releaseNotes += "**$typeLabel**: $description`n"
-          } else {
-            $releaseNotes += "$commitSubject`n"
+          
+          if ($features.Count -gt 0) {
+            $releaseNotes += "### ✨ Features`n"
+            $releaseNotes += ($features -join "`n") + "`n`n"
           }
-
-          if ($commitBody -ne "") {
-            $maxBodyLength = 1000
-            if ($commitBody.Length -gt $maxBodyLength) {
-              $commitBody = $commitBody.Substring(0, $maxBodyLength) + "..."
-            }
-            $releaseNotes += "`n$commitBody`n"
+          
+          if ($fixes.Count -gt 0) {
+            $releaseNotes += "### 🐛 Fixes`n"
+            $releaseNotes += ($fixes -join "`n") + "`n`n"
           }
-
+          
+          if ($performance.Count -gt 0) {
+            $releaseNotes += "### ⚡ Performance`n"
+            $releaseNotes += ($performance -join "`n") + "`n`n"
+          }
+          
+          if ($refactors.Count -gt 0) {
+            $releaseNotes += "### ♻️ Refactoring`n"
+            $releaseNotes += ($refactors -join "`n") + "`n`n"
+          }
+          
+          if ($docs.Count -gt 0) {
+            $releaseNotes += "### 📝 Documentation`n"
+            $releaseNotes += ($docs -join "`n") + "`n`n"
+          }
+          
+          if ($tests.Count -gt 0) {
+            $releaseNotes += "### ✅ Tests`n"
+            $releaseNotes += ($tests -join "`n") + "`n`n"
+          }
+          
+          if ($builds.Count -gt 0) {
+            $releaseNotes += "### 📦 Build`n"
+            $releaseNotes += ($builds -join "`n") + "`n`n"
+          }
+          
+          if ($chores.Count -gt 0) {
+            $releaseNotes += "### 🔧 Chores`n"
+            $releaseNotes += ($chores -join "`n") + "`n`n"
+          }
+          
+          if ($reverts.Count -gt 0) {
+            $releaseNotes += "### ⏪ Reverts`n"
+            $releaseNotes += ($reverts -join "`n") + "`n`n"
+          }
+          
+          if ($others.Count -gt 0) {
+            $releaseNotes += "### 📋 Other Changes`n"
+            $releaseNotes += ($others -join "`n") + "`n`n"
+          }
+          
           Write-Output "DEBUG: releaseNotes: $releaseNotes"
-          $commitSha = git rev-parse --short HEAD
-          $releaseNotes += "`n---`n*Commit: $commitSha*"
+          $headCommitSha = git rev-parse --short HEAD
+          $releaseNotes += "---`n*Based on commits from $baseSha to $headSha*"
 
           $delimiter = "EOF_$(Get-Random)"
           Write-Output "DEBUG: Writing notes to output using delimiter $delimiter"
