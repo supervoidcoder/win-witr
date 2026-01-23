@@ -314,16 +314,17 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     
         // surprise we have nested for loops 
         for (size_t j = 0; j < i; j++) {
-            
+            if (i > pidNames.size() - children) {
                 std::cout << "  "; // this adds indentation
-            
+            }
+        }
         if (i > 0) {
         if (IsVirtualTerminalModeEnabled()) {
         std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
         } else {
         std::cout << "└─ ";  
         }
-        }   // peak indentation
+          // peak indentation
         if (IsVirtualTerminalModeEnabled()) {
             if (targetpid == pidNames[i])  {
                 std::cout << "\033[1;32m" << exeNames[i] << " (PID " << pidNames[i] << ")" << "\033[0m" << std::endl;
@@ -348,6 +349,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
         }
 
     }
+}
     
    if (nameSize > 0) {
     DWORD lastParentPid = parentPids.back();
