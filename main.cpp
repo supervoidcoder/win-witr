@@ -317,13 +317,13 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
                 std::cout << "  "; // this adds indentation
             }
         if (i > 0) {
-        if (IsVirtualTerminalModeEnabled) {
+        if (IsVirtualTerminalModeEnabled()) {
         std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
         } else {
         std::cout << "└─ ";  
         }
         }   // peak indentation
-        if (IsVirtualTerminalModeEnabled) {
+        if (IsVirtualTerminalModeEnabled()) {
             if (targetpid == pidNames[i])  {
                 std::cout << "\033[1;32m" << exeNames[i] << " (PID " << pidNames[i] << ")" << "\033[0m" << std::endl;
             } else {
@@ -331,9 +331,9 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
 
                 // since we don't have virtual terminal colors to highlight it,
                 // we're gonna use arrows
-            } else{
+            } 
+            }else {
                 std::cout   << exeNames[i] << " (PID " << pidNames[i] << ")"  << std::endl;
-            }
             
 
         
