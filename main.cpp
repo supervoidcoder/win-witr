@@ -318,7 +318,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
 
     for (size_t i = 0; i < nameSize; i++ ){ // size_t is an unsigned integer designed to be ridiculously big to handle monstrosities,
                                           // idk just in case some psycho has a gazillion nested procs
-    
+        std::cout << "  "; // add one indentation so it looks cleaner
         // surprise we have nested for loops 
         for (size_t j = 0; j < i; j++) {
             if (i < nameSize - children) {
