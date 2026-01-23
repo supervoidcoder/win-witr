@@ -156,7 +156,7 @@ jobs:
           Write-Output "DEBUG: Head SHA: $headSha"
           
           # Get all commit messages in the PR
-          $commits = @(git log --pretty=format:"%H|%s|%b" "$baseSha..$headSha")
+          $commits = @(git log --pretty=format:"%h|%s|%b" "$baseSha..$headSha")
           Write-Output "DEBUG: Found $($commits.Count) commits in PR"
           
           # Initialize categorized lists
@@ -180,7 +180,7 @@ jobs:
             $parts = $line -split '\|', 3
             if ($parts.Count -lt 2) { continue }
             
-            $commitHash = $parts[0].Substring(0, [Math]::Min(7, $parts[0].Length))
+            $commitHash = $parts[0]
             $subject = $parts[1]
             $body = if ($parts.Count -eq 3) { $parts[2] } else { "" }
             
