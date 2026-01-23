@@ -308,20 +308,15 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     std::reverse(parentPids.begin(), parentPids.end());  
     // now get the size of one of the lists to know how many we got (they should all be the same length)
     size_t nameSize = exeNames.size();
-    if (nameSize > 0) {
-        DWORD lastParentPid = parentPids.front();
-        ULONGLONG lastParentTime = GetProcessCreationTime(lastParentPid);
-        ULONGLONG lastChildTime = exeTimes.front();
-        
-        std::cout << "[Parent Process Exited]" << std::endl;
-    }
+    
 
     for (size_t i = 0; i < nameSize; i++ ){ // size_t is an unsigned integer designed to be ridiculously big to handle monstrosities,
                                           // idk just in case some psycho has a gazillion nested procs
         
         // surprise we have nested for loops 
         for (size_t j = 0; j < i; j++) {
-            if (i < nameSize - children) {
+            size_t targetIndex = nameSize - children - 1;
+        if (i < nameSize - children || j < targetIndex) {
                 std::cout << "  "; // this adds indentation
             }
         }
