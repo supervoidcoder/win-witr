@@ -290,8 +290,7 @@ UPDATE: This is done now!!
                 }
                 
 
-                found = true;
-                break;
+                
             
         } while (Process32Next(hSnapshot, &pe32));
 
@@ -350,7 +349,10 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     if (lastParentPid != 0 && lastParentPid != 4 && 
         (lastParentTime == 0 || lastParentTime >= lastChildTime)) {
         for (size_t j = 0; j < nameSize; j++) {
+            if (children > 0) {
             std::cout << "  ";
+            children--;
+            }
         }
         std::cout << "└─ [Parent Process Exited]" << std::endl;
     }
