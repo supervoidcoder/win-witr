@@ -218,6 +218,8 @@ UPDATE: This is done now!!
     DWORD parentPid = 0;
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE) return;
+    DWORD targetpid = pid; // the function already passes pid into us, but 
+                          // just to be safe that pid doesn't get overwritten in the loop below
     std::string exeName = "Unknown/Dead Process";
     std::vector<std::string> exeNames;
     std::vector<ULONGLONG> exeTimes; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
@@ -258,7 +260,44 @@ UPDATE: This is done now!!
      
     if (!found) break;
     }
-CloseHandle(hSnapshot);
+    // we're close... but not done yet. we need to find the CHILDREN of the process now. 
+    // We can create another loop, but this time going downwards, checking if a process
+    // tells us that our target pid is it's parent. This time, we don't have to worry about
+    // Checking if the parent is alive, because, well, since the target IS the parent, 
+    // it must be alive.
+    int children = 0; // i wonder what would happen if you could set an emoji as var name
+    if (Process32First(hSnapshot, &pe32)) {
+        do {
+            
+               // this time, our target pid is already stored at the very top of our list.
+               // this means we don't have to add target pid stuff.
+               // TODO: (for future optimization) we should probably move this before the 
+               // the previous loop, since emplacing to the front requires shifting the entire list
+               // and therefore is inefficient, robbing us of a couple milliseconds of precious cpu time :(
+
+                if (pe32.th32ParentProcessID == targetpid) {
+                    exeName = WideToString(pe32.szExeFile); // this stores the name of our pid we're looking at in a var
+                    exeNames.emplace(exeNames.begin(), exeName); // this adds this to the front of the list
+                    // in this case, we are adding stuff to the front of the list, since we're looking at children
+                    // you might've noticed this doesn't have an emplace_front() like emplace_back() since 
+                    // it's inefficient and the creators of the vector lib didn't do it
+                    pidNames.emplace(pidNames.begin(), pe32.th32ProcessID);
+                    ULONGLONG childTime = GetProcessCreationTime(pe32.th32ProcessID);
+                    exeTimes.emplace(exeTimes.begin(), childTime); // we don't even use this but we need to keep all the vectors the same length
+                    parentPids.emplace(parentPids.begin(), pe32.th32ProcessID); // just fill it up, we aren't using it
+                    children++; // keeps track of how many children we have (that sounds wrong when you say it)
+
+                }
+                
+
+                
+            
+        } while (Process32Next(hSnapshot, &pe32));
+
+    }
+
+    
+CloseHandle(hSnapshot); // we're only closing the handle until we finish messing with the snapshot
     //phew thankfully we're done with that mess
     // now we need to reverse all the vector lists we made so
     // that the ancestry tree is correctly diisplayed from root to children like witr
@@ -269,34 +308,53 @@ CloseHandle(hSnapshot);
     std::reverse(parentPids.begin(), parentPids.end());  
     // now get the size of one of the lists to know how many we got (they should all be the same length)
     size_t nameSize = exeNames.size();
+    
 
     for (size_t i = 0; i < nameSize; i++ ){ // size_t is an unsigned integer designed to be ridiculously big to handle monstrosities,
                                           // idk just in case some psycho has a gazillion nested procs
-    
+        
         // surprise we have nested for loops 
         for (size_t j = 0; j < i; j++) {
+            size_t targetIndex = nameSize - children - 1;
+        if (i < nameSize - children || j < targetIndex) {
                 std::cout << "  "; // this adds indentation
             }
-        if (i > 0) {
-        
-        std::cout << "└─ ";  // it's the little thingy thing └─ unicode from witr 
-        }   
-        std::cout << exeNames[i] << " (PID " << pidNames[i] << ")" << std::endl;
-
-    }
-    
-   if (nameSize > 0) {
-    DWORD lastParentPid = parentPids.back();
-    ULONGLONG lastParentTime = GetProcessCreationTime(lastParentPid);
-    ULONGLONG lastChildTime = exeTimes.back();
-    
-    if (lastParentPid != 0 && lastParentPid != 4 && 
-        (lastParentTime == 0 || lastParentTime >= lastChildTime)) {
-        for (size_t j = 0; j < nameSize; j++) {
-            std::cout << "  ";
         }
-        std::cout << "└─ [Parent Process Exited]" << std::endl;
-    }
+        if (i > 0) {
+            
+            std::cout << "  "; // add one indentation att start so it looks cleaner
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
+        } else {
+            std::cout << "└─ ";  
+        }}
+           
+        if (IsVirtualTerminalModeEnabled()) {
+            if (targetpid == pidNames[i])  {
+                std::cout << "\033[1;32m" << exeNames[i] << " (PID " << pidNames[i] << ")" << "\033[0m" << std::endl;
+            } else {
+               std::cout   << exeNames[i] << " (PID " << pidNames[i] << ")"  << std::endl;
+            } 
+            }else {
+                if (targetpid == pidNames[i])  {
+                 std::cout   << exeNames[i] << " (PID " << pidNames[i] << ") ⬅"  << std::endl;
+
+                // since we don't have virtual terminal colors to highlight it,
+                // we're gonna use arrows
+                }
+                else {
+                    std::cout   << exeNames[i] << " (PID " << pidNames[i] << ")"  << std::endl;
+                }
+
+                
+            
+
+        
+        }
+
+    
+    
+   
 } 
     }
 
