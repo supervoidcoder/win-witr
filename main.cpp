@@ -317,7 +317,10 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
             if (i > pidNames.size() - children) {
                 std::cout << "  "; // this adds indentation
             }
+            else {
 
+            }
+        }
         
         if (i > 0) {
         if (IsVirtualTerminalModeEnabled()) {
@@ -368,7 +371,7 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
     }
 } 
     }
-
+}
  
 
 
