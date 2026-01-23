@@ -282,7 +282,7 @@ UPDATE: This is done now!!
                     // you might've noticed this doesn't have an emplace_front() like emplace_back() since 
                     // it's inefficient and the creators of the vector lib didn't do it
                     pidNames.emplace(pidNames.begin(), pe32.th32ProcessID);
-                    ULONGLONG childTime == GetProcessCreationTime(pe32.th32ProcessID);
+                    ULONGLONG childTime = GetProcessCreationTime(pe32.th32ProcessID);
                     exeTimes.emplace(exeTimes.begin(), childTime); // we don't even use this but we need to keep all the vectors the same length
                     parentPids.emplace(parentPids.begin(), pe32.th32ProcessID); // just fill it up, we aren't using it
                     children++; // keeps track of how many children we have (that sounds wrong when you say it)
