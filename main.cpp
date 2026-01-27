@@ -612,7 +612,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 
     // Use our little lookup table to give hints for specific errors
 
-	std::cout << "User: " << GetUserNameFromProcess(pid);
+	std::cout << "User: " << WideToString(GetUserNameFromProcess(pid));
 	// literally very rough start i just rushed to get this done
 	// still needs lots of error handling, some code modifying
 	// so far i dont even know if the function works due to how rushed i did this
