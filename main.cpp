@@ -359,7 +359,7 @@ std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
                 endUser = user;
                 endDomain = domain;
             }
-            }
+            
 
             CloseHandle(hToken);
         }
