@@ -303,6 +303,59 @@ void PrintErrorHints(int errorCode) {
     }
 }
 
+std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
+{
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, id); // 1- OpenProcess
+    std::wstring endUser = L"";
+    std::wstring endDomain = L"";
+
+    if (hProcess != NULL)
+    {
+        HANDLE  hToken = NULL;
+
+        if (OpenProcessToken(hProcess, TOKEN_QUERY, &hToken)) // 2- OpenProcessToken
+        {
+            DWORD tokenSize = 0;
+            GetTokenInformation(hToken, TokenUser, NULL, 0, &tokenSize);
+
+            if (tokenSize > 0)
+            {
+                BYTE* data = new BYTE[tokenSize];
+                GetTokenInformation(hToken, TokenUser, data, tokenSize, &tokenSize); // 3- GetTokenInformation
+                TOKEN_USER* pUser = (TOKEN_USER*)data;
+                PSID pSID = pUser->User.Sid;
+                DWORD userSize = 0;
+                DWORD domainSize = 0;
+                SID_NAME_USE sidName;
+                LookupAccountSid(NULL, pSID, NULL, &userSize, NULL, &domainSize, &sidName);
+                wchar_t* user = new wchar_t[userSize + 1];
+                wchar_t* domain = new wchar_t[domainSize + 1];
+                LookupAccountSid(NULL, pSID, user, &userSize, domain, &domainSize, &sidName); // 4- LookupAccountSid
+                user[userSize] = L'\0';
+                domain[domainSize] = L'\0';
+                endUser = user;
+                endDomain = domain;
+                delete[] domain;
+                delete[] user;
+                delete[] data;
+            }
+
+            CloseHandle(hToken);
+        }
+
+        CloseHandle(hProcess);
+
+        if (endUser != L"")
+            return endUser;
+    }
+
+    return {};
+}
+// I just straight up stole this function from Stack Overflow lol
+// https://stackoverflow.com/questions/2686096/c-get-username-from-process
+// Permalink: https://stackoverflow.com/a/73242956
+// Thanks!
+
 
 void PrintAncestry(DWORD pid) {
 
@@ -558,7 +611,11 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     }
 
     // Use our little lookup table to give hints for specific errors
-    
+
+	std::cout << "User: " << GetUserNameFromProcess(pid);
+	// literally very rough start i just rushed to get this done
+	// still needs lots of error handling, some code modifying
+	// so far i dont even know if the function works due to how rushed i did this
     
     
 
