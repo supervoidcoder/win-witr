@@ -334,7 +334,6 @@ UPDATE: This is done now!!
             // it shouldn't harm performance, but even if it does, I want to get 
             // the features done first before optimizing anything
             if (pe32.th32ProcessID == currentProcessId) {
-                currentParentPid = pe32.th32ParentProcessID;
                 break;
             }
         } while (Process32Next(hSnapshot, &pe32));
