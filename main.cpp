@@ -611,8 +611,22 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     }
 
     // Use our little lookup table to give hints for specific errors
-
-	std::cout << "User: " << WideToString(GetUserNameFromProcess(pid));
+	auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
+	if (user.has_value()) {
+		if (IsVirtualTerminalModeEnabled()) {
+   			 std::cout << "\033[1;34mUser\033[0m: " << WideToString(user.value());
+			else {
+				std::cout << "User: " << WideToString(user.value());
+			}
+			
+	} else {
+	   if (IsVirtualTerminalModeEnabled()) {
+        std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m"; 
+    } else {
+        std::cout << "User: N/A (Failed to access info)";
+    }
+	}
+	
 	// literally very rough start i just rushed to get this done
 	// still needs lots of error handling, some code modifying
 	// so far i dont even know if the function works due to how rushed i did this
