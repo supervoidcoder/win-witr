@@ -321,28 +321,44 @@ std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
         if (OpenProcessToken(hProcess, TOKEN_QUERY, &hToken)) // 2- OpenProcessToken
         {
             DWORD tokenSize = 0;
-            GetTokenInformation(hToken, TokenUser, NULL, 0, &tokenSize);
+            if (!GetTokenInformation(hToken, TokenUser, nullptr, 0, &tokenSize) &&
+                GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                CloseHandle(hToken);
+                CloseHandle(hProcess);
+                return {};
+            }
 
             if (tokenSize > 0)
             {
-                BYTE* data = new BYTE[tokenSize];
-                GetTokenInformation(hToken, TokenUser, data, tokenSize, &tokenSize); // 3- GetTokenInformation
-                TOKEN_USER* pUser = (TOKEN_USER*)data;
+                std::vector<BYTE> data(tokenSize);
+                if (!GetTokenInformation(hToken, TokenUser, data.data(), tokenSize, &tokenSize)) {
+                    CloseHandle(hToken);
+                    CloseHandle(hProcess);
+                    return {};
+                }
+                TOKEN_USER* pUser = reinterpret_cast<TOKEN_USER*>(data.data());
                 PSID pSID = pUser->User.Sid;
                 DWORD userSize = 0;
                 DWORD domainSize = 0;
                 SID_NAME_USE sidName;
-                LookupAccountSid(NULL, pSID, NULL, &userSize, NULL, &domainSize, &sidName);
-                wchar_t* user = new wchar_t[userSize + 1];
-                wchar_t* domain = new wchar_t[domainSize + 1];
-                LookupAccountSid(NULL, pSID, user, &userSize, domain, &domainSize, &sidName); // 4- LookupAccountSid
-                user[userSize] = L'\0';
-                domain[domainSize] = L'\0';
+                if (!LookupAccountSidW(nullptr, pSID, nullptr, &userSize, nullptr, &domainSize, &sidName) &&
+                    GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                    CloseHandle(hToken);
+                    CloseHandle(hProcess);
+                    return {};
+                }
+                std::wstring user(userSize, L'\0');
+                std::wstring domain(domainSize, L'\0');
+                if (!LookupAccountSidW(nullptr, pSID, user.data(), &userSize, domain.data(), &domainSize, &sidName)) {
+                    CloseHandle(hToken);
+                    CloseHandle(hProcess);
+                    return {};
+                }
+                user.resize(userSize);
+                domain.resize(domainSize);
                 endUser = user;
                 endDomain = domain;
-                delete[] domain;
-                delete[] user;
-                delete[] data;
+            }
             }
 
             CloseHandle(hToken);
