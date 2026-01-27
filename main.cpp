@@ -16,7 +16,8 @@
 #include <sstream>  
 #include <ctime>      
 #include <algorithm> 
- 
+#include <conio.h> 
+
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
 // The above macro converts Windows FILETIME to Unix epoch time in seconds.
 // I explain more about why this is needed below and in the README. 
@@ -53,6 +54,45 @@ Less words to type ;)
 */
 std::string forkAuthor = ""; // if this is a fork of this project, put your name here! Please be nice and leave my name too :)
 std::string version = "v0.1.0"; // Version of this Windows port
+thread_local std::string currentParentExe = ""; // to store the name of our own parent process for error hints
+
+std::string WideToString(const std::wstring& wstr);
+
+void EnsureCurrentParentExe() {
+    if (!currentParentExe.empty()) return;
+
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) return;
+
+    PROCESSENTRY32 pe32{};
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    DWORD currentProcessId = GetCurrentProcessId();
+    DWORD parentPid = 0;
+
+    if (Process32First(hSnapshot, &pe32)) {
+        do {
+            if (pe32.th32ProcessID == currentProcessId) {
+                parentPid = pe32.th32ParentProcessID;
+                break;
+            }
+        } while (Process32Next(hSnapshot, &pe32));
+    }
+
+    if (parentPid != 0) {
+        pe32.dwSize = sizeof(PROCESSENTRY32);
+        if (Process32First(hSnapshot, &pe32)) {
+            do {
+                if (pe32.th32ProcessID == parentPid) {
+                    currentParentExe = WideToString(pe32.szExeFile);
+                    break;
+                }
+            } while (Process32Next(hSnapshot, &pe32));
+        }
+    }
+
+    CloseHandle(hSnapshot);
+}
 
 
 bool IsVirtualTerminalModeEnabled() {
@@ -70,6 +110,26 @@ bool IsVirtualTerminalModeEnabled() {
 // and that's probably not very pleasant to the user. This is very rare and I have yet to encounter a terminal that doesn't support it, 
 // but I'm sure there's someone out there using some ANCIENT old version of Windows that doesn't support it, and we want to support this for all versions.
 // Who knows, I might even test this on windows XP hahahahahaha... 
+
+
+
+// Here, we will create an unordered map, essentially a lookup table filled with useful stuff like hints for specific errors
+std::unordered_map<int, std::string> errorHints = {
+    {5, "Access is denied."},
+    {87, "The process or PID doesn't exist."},
+    {31, "This error indicates a driver error, but in win-witr, it often means you are calling a pseudo-process, such as System, Registry, or other processes that only exist in RAM as a kernel process. It is often easy to tell them apart if they lack a .exe extension."}
+    // So far, these are the only error codes I myself have encountered while using win-witr.   
+    // Something funny about this tool is that the error descriptions in Windows documentation are sometimes
+    // Completely unrelated to what the actual error means in the context of win-witr.
+    // For example, ERROR_INVALID_PARAMETER (87) is described as "The parameter is incorrect.", but in win-witr,
+    // it usually means that the process or PID you're trying to query doesn't exist.
+    // Same for 31, which is described as "A device attached to the system is not functioning.", but in win-witr,
+    // I've only gotten it when calling processes like System, Registry, etc.
+    
+    // If you want the full list of win32 error codes, you can find them here: https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499-
+    
+};
+
 
 bool EnableDebugPrivilege() {
     HANDLE hToken;
@@ -197,6 +257,52 @@ std::string GetReadableFileTime(DWORD pid) {
     return oss.str();
 }
 
+void PrintErrorHints(int errorCode) {
+    EnsureCurrentParentExe();
+    // Use our little lookup table to give hints for specific errors
+    if (errorHints.find(errorCode) != errorHints.end()) {
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cerr << "\033[1;33mHint:\033[0m " << errorHints[errorCode] << std::endl;
+        } else {
+            std::cerr << "Hint: " << errorHints[errorCode] << std::endl;
+
+        }
+        // if it's 5 specifically, we can add an extra hint
+        if (errorCode == 5) {
+            if (currentParentExe == "powershell.exe" || currentParentExe == "pwsh.exe" || currentParentExe == "PowerShell.exe") {
+                std::cerr << "Try reopening Powershell as Administrator and running win-witr again." << std::endl;
+            } else if (currentParentExe == "cmd.exe") {
+                std::cerr << "Try reopening Command Prompt as Administrator and running win-witr again." << std::endl;
+            }
+            else if (currentParentExe == "WindowsTerminal.exe") {
+                std::cerr << "Try reopening Windows Terminal as Administrator and running win-witr again." << std::endl;
+            } else if (currentParentExe == "explorer.exe") {
+                std::cerr << "It seems you might be opening this as a shortcut with flags from Explorer. For best results, try running win-witr from an elevated Command Prompt or Powershell. " << std::endl;
+                std::cout << "\nPress any key to exit...";
+                _getch();
+                // the process will automatically exit since if you open a terminal based script from explorer, the terminal will close immediately after execution is over
+                // either way we want to give the user a chance to read the error message even if they did something as weird as this
+                // it's crazy I even thought of this scenario lol
+
+            } else if (currentParentExe == "wsl.exe" || currentParentExe == "wslhost.exe") {
+                std::cerr << "Hah, you're running this in Windows Subsystem for Linux. Run wsl as Admin!" << std::endl;
+
+
+            } else if (currentParentExe == "git-bash.exe") {
+                std::cerr << "Uh, you're running this from Git Bash. Try running this program from an elevated Command Prompt or Powershell." << std::endl;
+            }
+                else {
+                std::cerr << "Try reopening this program (or more likely, the shell you're running this in, currently " << currentParentExe << ") as Administrator and running win-witr again." << std::endl;
+            }
+
+
+
+        }
+
+
+    }
+}
+
 
 void PrintAncestry(DWORD pid) {
 
@@ -218,6 +324,21 @@ UPDATE: This is done now!!
     DWORD parentPid = 0;
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE) return;
+    
+    
+    DWORD currentProcessId = GetCurrentProcessId(); // checking our own process
+    DWORD currentParentPid = 0;
+
+    if (Process32First(hSnapshot, &pe32)) { // here, we're gonna use the existing snapshot so it doesn't use another
+        do {
+            // it shouldn't harm performance, but even if it does, I want to get 
+            // the features done first before optimizing anything
+            if (pe32.th32ProcessID == currentProcessId) {
+                break;
+            }
+        } while (Process32Next(hSnapshot, &pe32));
+    }
+    
     DWORD targetpid = pid; // the function already passes pid into us, but 
                           // just to be safe that pid doesn't get overwritten in the loop below
     std::string exeName = "Unknown/Dead Process";
@@ -227,7 +348,7 @@ UPDATE: This is done now!!
     std::vector<DWORD> parentPids;
     bool found = false;
     while (pid != 0 && pid != 4) {
-    found = false;
+    found = false; 
     if (Process32First(hSnapshot, &pe32)) {
         do {
             if (pe32.th32ProcessID == pid) {
@@ -374,35 +495,77 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
         // This lets us know if the error was denied specifically for access reasons. THis will initiate our little fallback.
          hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid); // poor little guy getting limited of his full power
          // This has been tested and it does let us get info about lsass.exe and even System! Woohoo!
+         // But of course, you need to be running as admin for this to work.
     }
+    int errorCode = 0;
+    bool queryError = false;
     if (!hProcess) {
+        errorCode = GetLastError();
+        
         if (IsVirtualTerminalModeEnabled()) {
+            
+            queryError = true;
             std::cerr << "\033[1;31mError:\033[0m Could not open process with PID " 
-                      << pid << ". Error code: " << GetLastError() 
+                      << pid << ". Error code: " << errorCode 
                       << "\nMaybe it doesn't exist or access is denied." << std::endl;
+
         } else {
+            queryError = true;
             std::cerr << "Error: Could not open process with PID " 
-                      << pid << ". Error code: " << GetLastError() 
+                      << pid << ". Error code: " << errorCode 
                       << "\nMaybe it doesn't exist or access is denied." << std::endl;
+                
         }
-        return;
+        if (queryError) {
+        PrintErrorHints(errorCode);
+    }
+        
+        
     }
 
      
     char exePath[MAX_PATH] = {0};
     DWORD size = MAX_PATH;
+        
     if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size)) {
+        
         std::cout << "Executable Path: " << exePath << std::endl;
     } else {
-        std::cerr << "Error: Unable to query executable path. Error code: " 
-                  << GetLastError() 
-                  << "\n Maybe Access is Denied or the process is living in RAM." << std::endl;
+        
+        errorCode = GetLastError();
+        if (IsVirtualTerminalModeEnabled()) {
+            queryError = true;
+            std::cerr << "\033[1;31mError:\033[0m Unable to query executable path. Error code: " 
+                      << errorCode 
+                      << "\n Maybe Access is Denied or the process is running entirely in RAM." << std::endl;
+        } else {
+            queryError = true;
+            std::cerr << "Error: Unable to query executable path. Error code: " 
+                      << errorCode 
+                      << "\n Maybe Access is Denied or the process is running entirely in RAM." << std::endl;
+        }
+        if (queryError) {
+        PrintErrorHints(errorCode);
+        // it might seem like overkill to call the function every time there's an error,
+        // but if you remember we have a fallback for opening processes, so there are multiple
+        // places where an error can occur.
+        // for example, when testing this, the hint for error 5 (access denied) didn't show up
+        // since immediately after it was overwritten by error code 6 (valid but insufficient permissions) created by the fallback
+        // with the limited process info
     }
+
+        
+    }
+
+    // Use our little lookup table to give hints for specific errors
+    
+    
+    
 
      
      // TODO: add color text
      
-    std::cout << "\nProcess Ancestry:\n";
+    std::cout << "\nWhy It Exists:\n";
     PrintAncestry(pid);
 
     std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl; 
