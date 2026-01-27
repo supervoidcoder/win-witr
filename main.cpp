@@ -615,7 +615,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 	if (user.has_value()) {
 		if (IsVirtualTerminalModeEnabled()) {
    			 std::cout << "\033[1;34mUser\033[0m: " << WideToString(user.value());
-			else {
+		} else {
 				std::cout << "User: " << WideToString(user.value());
 			}
 			
