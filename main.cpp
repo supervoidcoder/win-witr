@@ -303,6 +303,80 @@ void PrintErrorHints(int errorCode) {
     }
 }
 
+std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
+{
+     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, id);
+    
+
+    if (!hProcess && GetLastError() == ERROR_ACCESS_DENIED) {
+        hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, id); // cute fallback
+	}
+    std::wstring endUser = L"";
+    std::wstring endDomain = L"";
+
+    if (hProcess != NULL)
+    {
+        HANDLE  hToken = NULL;
+
+        if (OpenProcessToken(hProcess, TOKEN_QUERY, &hToken)) // 2- OpenProcessToken
+        {
+            DWORD tokenSize = 0;
+            if (!GetTokenInformation(hToken, TokenUser, nullptr, 0, &tokenSize) &&
+                GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                CloseHandle(hToken);
+                CloseHandle(hProcess);
+                return {};
+            }
+
+            if (tokenSize > 0)
+            {
+                std::vector<BYTE> data(tokenSize);
+                if (!GetTokenInformation(hToken, TokenUser, data.data(), tokenSize, &tokenSize)) {
+                    CloseHandle(hToken);
+                    CloseHandle(hProcess);
+                    return {};
+                }
+                TOKEN_USER* pUser = reinterpret_cast<TOKEN_USER*>(data.data());
+                PSID pSID = pUser->User.Sid;
+                DWORD userSize = 0;
+                DWORD domainSize = 0;
+                SID_NAME_USE sidName;
+                if (!LookupAccountSidW(nullptr, pSID, nullptr, &userSize, nullptr, &domainSize, &sidName) &&
+                    GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                    CloseHandle(hToken);
+                    CloseHandle(hProcess);
+                    return {};
+                }
+                std::wstring user(userSize, L'\0');
+                std::wstring domain(domainSize, L'\0');
+                if (!LookupAccountSidW(nullptr, pSID, user.data(), &userSize, domain.data(), &domainSize, &sidName)) {
+                    CloseHandle(hToken);
+                    CloseHandle(hProcess);
+                    return {};
+                }
+                user.resize(userSize);
+                domain.resize(domainSize);
+                endUser = user;
+                endDomain = domain;
+            }
+            
+
+            CloseHandle(hToken);
+        }
+
+        CloseHandle(hProcess);
+
+        if (endUser != L"")
+            return endUser;
+    }
+
+    return {};
+}
+// I just straight up stole this function from Stack Overflow lol
+// https://stackoverflow.com/questions/2686096/c-get-username-from-process
+// Permalink: https://stackoverflow.com/a/73242956
+// Thanks!
+
 
 void PrintAncestry(DWORD pid) {
 
@@ -558,7 +632,25 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     }
 
     // Use our little lookup table to give hints for specific errors
-    
+	auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
+	if (user.has_value()) {
+		if (IsVirtualTerminalModeEnabled()) {
+   			 std::cout << "\033[1;34mUser\033[0m: " << WideToString(user.value());
+		} else {
+				std::cout << "User: " << WideToString(user.value());
+			}
+			
+	} else {
+	   if (IsVirtualTerminalModeEnabled()) {
+        std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m"; 
+    } else {
+        std::cout << "User: N/A (Failed to access info)";
+    }
+	}
+	
+	// literally very rough start i just rushed to get this done
+	// still needs lots of error handling, some code modifying
+	// so far i dont even know if the function works due to how rushed i did this
     
     
 
