@@ -305,7 +305,12 @@ void PrintErrorHints(int errorCode) {
 
 std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
 {
-    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, id); // 1- OpenProcess
+     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, id);
+    
+
+    if (!hProcess && GetLastError() == ERROR_ACCESS_DENIED) {
+        hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, id); // cute fallback
+	}
     std::wstring endUser = L"";
     std::wstring endDomain = L"";
 
