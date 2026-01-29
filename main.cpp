@@ -396,7 +396,7 @@ std::string GetProcessNameFromPid(DWORD pid) {
     }
 
     CloseHandle(snapshot);
-    return std::to_string(pid);
+    return "";
 }
 
 void PrintAncestry(DWORD pid) {
