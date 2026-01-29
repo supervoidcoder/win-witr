@@ -596,7 +596,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 			std::cout << "Target: N/A\nProcess: N/A\n";
 				} else {
 		std::cout << "Target: " << procName << std::endl;
-		std::cout << "Process: " << procName << "(pid " << std::to_string(pid) << << ")" << std::endl;
+		std::cout << "Process: " << procName << "(pid " << std::to_string(pid) << ")" << std::endl;
 		}
 	}
 	
