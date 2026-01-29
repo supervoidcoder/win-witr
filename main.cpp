@@ -377,8 +377,33 @@ std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
 // Permalink: https://stackoverflow.com/a/73242956
 // Thanks!
 
+std::string GetProcessNameFromPid(DWORD pid) {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        return "" // vroken
+    }
+
+    PROCESSENTRY32 pe{};
+    pe.dwSize = sizeof(PROCESSENTRY32);
+
+    if (Process32First(snapshot, &pe)) {
+        do {
+            if (pe.th32ProcessID == pid) {
+                CloseHandle(snapshot);
+                return WideToString(pe.szExeFile);
+            }
+        } while (Process32Next(snapshot, &pe));
+    }
+
+    CloseHandle(snapshot);
+    return std::to_string(pid);
+}
 
 void PrintAncestry(DWORD pid) {
+	// now we're geting the name
+// we're making it slower by adding a bunch of snapshots 
+// but again, we'll optimize and refactor later, i need this to work first
+
 
 /*
 ~~~~~~~~~~~~~TODO: This tree is flipped. The output should be like this, as shown in the original witr:
@@ -558,6 +583,11 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
 
 
 void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
+	std::string procName = GetProcessNameFromPid(pid)
+	std::cout << "Target: " << procName << std::endl;
+	std::cout << "Process: " << procName << "pid " << std::to_string(pid) << std::endl;
+
+	
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
     // The above little handle opener is currently a somwehat "agressive" flag, since it
     // Requests read access directly to the process' actual memory. This can get us rejected if called
@@ -575,6 +605,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     bool queryError = false;
     if (!hProcess) {
         errorCode = GetLastError();
+	
         
         if (IsVirtualTerminalModeEnabled()) {
             
@@ -837,7 +868,7 @@ int main(int argc, char* argv[]) {
             std::string procName = arg;
             int pid = findMyProc(procName.c_str());
             if (pid != 0) {
-                std::cout << "Process Name specified: " << procName << " (PID " << pid << ")" << std::endl;
+                
                 PIDinspect(static_cast<DWORD>(pid));
             } else {
                 if (IsVirtualTerminalModeEnabled()) {
