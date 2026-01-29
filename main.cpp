@@ -380,7 +380,7 @@ std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
 std::string GetProcessNameFromPid(DWORD pid) {
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) {
-        return "" // vroken
+        return ""; // vroken
     }
 
     PROCESSENTRY32 pe{};
@@ -583,9 +583,23 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
 
 
 void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
-	std::string procName = GetProcessNameFromPid(pid)
-	std::cout << "Target: " << procName << std::endl;
-	std::cout << "Process: " << procName << "pid " << std::to_string(pid) << std::endl;
+	std::string procName = GetProcessNameFromPid(pid);
+	if (IsVirtualTerminalModeEnabled()) {
+		if (procName == ""){
+			std::cout << "\033[34mTarget:\033[0m N/A\n\033[34mProcess:\033[0m N/A\n";
+		} else {
+		std::cout << "\033[34mTarget:\033[0m " << procName << "\033[0m" << std::endl;
+		std::cout << "\033[34mProcess:\033[0m " << procName << "\033[90m(pid " << std::to_string(pid) << ")\033[0m" << std::endl;
+		}
+	} else {
+		if (procName == ""){
+			std::cout << "Target: N/A\nProcess: N/A\n";
+				} else {
+		std::cout << "Target: " << procName << std::endl;
+		std::cout << "Process: " << procName << "(pid " << std::to_string(pid) << << ")" << std::endl;
+		}
+	}
+	
 
 	
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
