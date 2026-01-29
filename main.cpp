@@ -589,14 +589,14 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 			std::cout << "\033[34mTarget:\033[0m N/A\n\033[34mProcess:\033[0m N/A\n";
 		} else {
 		std::cout << "\033[34mTarget:\033[0m " << procName << "\033[0m" << std::endl;
-		std::cout << "\033[34mProcess:\033[0m " << procName << "\033[90m(pid " << std::to_string(pid) << ")\033[0m" << std::endl;
+		std::cout << "\033[34mProcess:\033[0m " << procName << "\033[90m (pid " << std::to_string(pid) << ")\033[0m" << std::endl;
 		}
 	} else {
 		if (procName == ""){
 			std::cout << "Target: N/A\nProcess: N/A\n";
 				} else {
 		std::cout << "Target: " << procName << std::endl;
-		std::cout << "Process: " << procName << "(pid " << std::to_string(pid) << ")" << std::endl;
+		std::cout << "Process: " << procName << " (pid " << std::to_string(pid) << ")" << std::endl;
 		}
 	}
 	
@@ -861,7 +861,7 @@ int main(int argc, char* argv[]) {
                 }
                 
 
-                std::cout << "PID specified: " << pid << std::endl;
+                
                 PIDinspect(static_cast<DWORD>(pid));
             } else {
                 if (IsVirtualTerminalModeEnabled()) { // ugh i have to do this EVERY SINGLE TIME
