@@ -3,18 +3,18 @@ param(
     [int]$CurrentDepth = 0,
     [string]$CurrentShell = "powershell"
 )
-
+cd D:\a\win-witr\win-witr
 # Ensure win-witr.exe is in PATH or current directory
-$exePath = win-witr.exe
+
 
 if ($CurrentDepth -ge $MaxDepth) {
     # We've reached max depth - run the actual test
     Write-Host "Reached depth $CurrentDepth - Running stress test..." -ForegroundColor Green
     
     # Run the measurement
-    & $exePath $exePath 
+    win-witr win-witr.exe
     $result = Measure-Command { 
-        & $exePath $exePath 
+        win-witr win-witr.exe
     }
     
     Write-Host "Time taken at depth ${CurrentDepth}: $($result.TotalMilliseconds)ms" -ForegroundColor Cyan
