@@ -9,14 +9,14 @@ $exePath = if (Test-Path ".\win-witr.exe") { ".\win-witr.exe" } else { "win-witr
 
 if ($CurrentDepth -ge $MaxDepth) {
     # We've reached max depth - run the actual test
-    Write-Host "✓ Reached depth $CurrentDepth - Running stress test..." -ForegroundColor Green
+    Write-Host "Reached depth $CurrentDepth - Running stress test..." -ForegroundColor Green
     
     # Run the measurement
     $result = Measure-Command { 
         & $exePath $exePath 
     }
     
-    Write-Host "⏱ Time taken at depth ${CurrentDepth}: $($result.TotalMilliseconds)ms" -ForegroundColor Cyan
+    Write-Host "Time taken at depth ${CurrentDepth}: $($result.TotalMilliseconds)ms" -ForegroundColor Cyan
     
     # Verify it actually worked
     if ($LASTEXITCODE -ne 0) {
@@ -31,7 +31,7 @@ if ($CurrentDepth -ge $MaxDepth) {
 $nextShell = if ($CurrentShell -eq "powershell") { "cmd" } else { "powershell" }
 $nextDepth = $CurrentDepth + 1
 
-Write-Host "Layer $CurrentDepth ($CurrentShell) → spawning $nextShell..." -ForegroundColor Gray
+Write-Host "Layer $CurrentDepth ($CurrentShell) -> spawning $nextShell..." -ForegroundColor Gray
 
 if ($nextShell -eq "cmd") {
     # Spawn CMD which will spawn PowerShell next
