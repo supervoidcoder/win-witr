@@ -5,13 +5,14 @@ param(
 )
 
 # Ensure win-witr.exe is in PATH or current directory
-$exePath = if (Test-Path ".\win-witr.exe") { ".\win-witr.exe" } else { "win-witr.exe" }
+$exePath = win-witr.exe
 
 if ($CurrentDepth -ge $MaxDepth) {
     # We've reached max depth - run the actual test
     Write-Host "Reached depth $CurrentDepth - Running stress test..." -ForegroundColor Green
     
     # Run the measurement
+    & $exePath $exePath 
     $result = Measure-Command { 
         & $exePath $exePath 
     }
