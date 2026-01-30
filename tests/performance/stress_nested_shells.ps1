@@ -12,9 +12,11 @@ if ($CurrentDepth -ge $MaxDepth) {
     Write-Host "Reached depth $CurrentDepth - Running stress test..." -ForegroundColor Green
     
     # Run the measurement
-    win-witr win-witr.exe
+    cd D:\a\win-witr\win-witr
+    .\win-witr win-witr.exe
     $result = Measure-Command { 
-        win-witr win-witr.exe
+        
+        .\win-witr win-witr.exe
     }
     
     Write-Host "Time taken at depth ${CurrentDepth}: $($result.TotalMilliseconds)ms" -ForegroundColor Cyan
