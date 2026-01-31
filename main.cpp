@@ -3,7 +3,7 @@
 // This file is part of win-witr.
 
 
-
+#define NO_STRICT
 #include <windows.h>
 #include <winternl.h>
 #include <tlhelp32.h> 
