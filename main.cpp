@@ -2,8 +2,8 @@
 // Copyright (C) 2025 supervoidcoder
 // This file is part of win-witr.
 
-#define _WIN32_WINNT  0x0501
-#define NO_STRICT
+
+
 #include <windows.h>
 #include <winternl.h>
 #include <tlhelp32.h> 
