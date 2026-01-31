@@ -3,6 +3,7 @@
 // This file is part of win-witr.
  
 #include <windows.h>
+#include <winternl.h>
 #include <tlhelp32.h> 
 #include <iostream>
 #include <string>
@@ -399,6 +400,48 @@ std::string GetProcessNameFromPid(DWORD pid) {
     return "";
 }
 
+wchar_t*  GetEnvironmentStringsW( HANDLE  hproc )
+{
+  void* p_ntdll = GetModuleHandle( L"ntdll.dll" ) ;
+  typedef NTSTATUS (__stdcall* tfn_qip ) ( HANDLE,
+                    PROCESSINFOCLASS, void*, ULONG, PULONG ) ;
+  tfn_qip pfn_qip = tfn_qip( GetProcAddress( p_ntdll, 
+                     "NtQueryInformationProcess" ) ) ;
+  assert( pfn_qip ) ;
+  PROCESS_BASIC_INFORMATION pbi ;
+  ULONG res_len = 0 ;
+  NTSTATUS status = pfn_qip( hproc,  ProcessBasicInformation,
+                     &pbi, sizeof(pbi), &res_len ) ;
+  assert( res_len == sizeof(pbi) ) ;
+  size_t ppeb = size_t( pbi.PebBaseAddress ) ;
+
+  char peb[ sizeof(PEB) ] ;
+  DWORD read ;
+  ReadProcessMemory( hproc, pbi.PebBaseAddress, 
+                           peb, sizeof(peb), &read ) ; 
+  assert( read == sizeof(peb) ) ;
+
+  enum { OFFSET_PEB = 0x10, OFFSET_X = 0x48 };
+  
+  void* ptr = (void*) *(INT_PTR*)(peb + OFFSET_PEB ) ;
+  char buffer[ OFFSET_X + sizeof(void*) ] ;
+  ReadProcessMemory( hproc, ptr, buffer, sizeof(buffer), &read ) ; 
+  assert( read == sizeof(buffer) ) ;
+  
+  void* penv = (void*) *(INT_PTR*)( buffer + OFFSET_X ) ;
+  enum { MAX_ENV_SIZE = 4096 }; 
+  wchar_t* env = new wchar_t[ MAX_ENV_SIZE ] ;
+  ReadProcessMemory( hproc, penv, env, MAX_ENV_SIZE, &read ) ; 
+  assert( read > 0 ) ;
+  
+  return env ;
+}
+
+// i found this on this forum https://www.daniweb.com/programming/software-development/threads/114975/c-win-api-capture-env-variables-of-another-process
+// i accidentally found a bunch of so called red teamers and malware documentation along the way which is... uh... weird... since i didn't even need it...
+// and how is that stuff even on google man that sounds like something straight from the dark web
+
+
 void PrintAncestry(DWORD pid) {
 	// now we're geting the name
 // we're making it slower by adding a bunch of snapshots 
@@ -692,6 +735,17 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
         std::cout << "User: N/A (Failed to access info)";
     }
 	}
+
+	wchar_t command = GetEnvironmentStringsW(hProcess);
+	
+		if (IsVirtualTerminalModeEnabled()) {
+   			 std::cout << "\033[1;34mCommand\033[0m: " << WideToString(command);
+		} else {
+				std::cout << "Command: " << WideToString(command);
+			}
+			
+	
+	
 	
 	// literally very rough start i just rushed to get this done
 	// still needs lots of error handling, some code modifying
