@@ -427,7 +427,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
     // but we still should add a cout to see where it failed
 
     std::cerr << "NtQuery Failed";
-    return ""; // failure
+    return "Failed to Access (wwitr:ntqueryfailed)"; // failure
 
 }
 
@@ -437,26 +437,25 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    std::cerr << "Failed to read ProcessParameters pointer";
-    // I know, very cryptic, but I will make this better later
+    
 
-    return "";
+    return "Failed to Access (wwitr:procParamPtrRead)";
 
 }
 
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    std::cerr << "Failed to read CommandLine struct";
-    return "";
+    
+    return "Failed to Access (wwitr:cmdLStructFail)";
 
 }
 
 std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-   std::cerr << "Failed to read buffer";
-    return ""; 
+   
+    return "Failed to Access (wwitr:bufferReadFail)"; 
 }
 
 std::wstring stringBuffer = buffer.data();
