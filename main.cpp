@@ -20,6 +20,7 @@
 #include <ctime>      
 #include <algorithm> 
 #include <conio.h> 
+#include <cassert>
 
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
 // The above macro converts Windows FILETIME to Unix epoch time in seconds.
@@ -738,7 +739,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     }
 	}
 
-	wchar_t command = GetEnvironmentStringsW(hProcess);
+	wchar_t* command = GetEnvironmentStringsW(hProcess);
 	
 		if (IsVirtualTerminalModeEnabled()) {
    			 std::cout << "\033[1;34mCommand\033[0m: " << WideToString(command);
