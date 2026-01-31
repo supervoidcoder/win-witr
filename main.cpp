@@ -419,7 +419,7 @@ wchar_t*  GetEnvironmentStringsW( HANDLE  hproc )
   size_t ppeb = size_t( pbi.PebBaseAddress ) ;
 
   char peb[ sizeof(PEB) ] ;
-  DWORD read ;
+  SIZE_T read;
   ReadProcessMemory( hproc, pbi.PebBaseAddress, 
                            peb, sizeof(peb), &read ) ; 
   assert( read == sizeof(peb) ) ;
