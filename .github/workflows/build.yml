@@ -25,6 +25,7 @@ jobs:
         shell: pwsh
         run: |
           # Run all test .bat files
+          $env:force_ansi = 1
           Get-ChildItem -Path tests -Recurse -Filter *.bat | ForEach-Object {
             Write-Host "Running test: $($_.FullName)"
             & $_.FullName

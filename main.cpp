@@ -100,6 +100,10 @@ void EnsureCurrentParentExe() {
 
 
 bool IsVirtualTerminalModeEnabled() {
+    if (GetEnvironmentVariableA("force_ansi", NULL, 0) > 0) {
+        return true;
+    }
+    // i'll probably make force-ansi a flag later but eh
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut == INVALID_HANDLE_VALUE) return false;
 
