@@ -409,7 +409,8 @@ std::string GetCommandLine(HANDLE hproc)
  // so far this implementation only works with x64 --> x64 process
  // so it's wip
 
- auto queryInfo = (pNtQueryInformationProcess)GetProcAdress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 // this is a very sketchy line of code
 // it calls NtQueryInformationProcess from internal kernel functions
 // i would've saved myself all this pain if I just used the WMI wrapper
@@ -418,8 +419,8 @@ std::string GetCommandLine(HANDLE hproc)
 // red teamers and other people have created a quite sizable amount of docs
 // so thank them, not me
 
-PROCCESS_BASIC_INFORMATION pbi;
-if (NtQueryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
     // all this code seems very C-style since most of the stuff like docs were thought for c
     // the code I'm basing this off manually creates a handle right here but we already created one
     // so the handle gets passed to this function and we don't need to clean up our handle just yet, just return
@@ -436,7 +437,7 @@ if (NtQueryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    std:cerr << "Failed to read ProcessParameters pointer";
+    std::cerr << "Failed to read ProcessParameters pointer";
     // I know, very cryptic, but I will make this better later
 
     return "";
@@ -444,7 +445,8 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, s
 }
 
 UNICODE_STRING cmdLStruct;
-if (!ReadProcessMemory(hproc, (BYTE)*procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), NULL)) {
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
     std::cerr << "Failed to read CommandLine struct";
     return "";
 
@@ -760,12 +762,12 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 	}
 
 	std::string command = GetCommandLine(hProcess);
-    
+
 	
 		if (IsVirtualTerminalModeEnabled()) {
-   			 std::cout << "\033[1;34mCommand\033[0m: " << WideToString(command);
+   			 std::cout << "\033[1;34mCommand\033[0m: " << command;
 		} else {
-				std::cout << "Command: " << WideToString(command);
+				std::cout << "Command: " << command;
 			}
 			
 	
