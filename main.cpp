@@ -403,46 +403,66 @@ std::string GetProcessNameFromPid(DWORD pid) {
     return "";
 }
 
-wchar_t*  GetEnvironmentStringsW( HANDLE  hproc )
+std::string GetCommandLine(HANDLE hproc)
 {
-  void* p_ntdll = GetModuleHandle( L"ntdll.dll" ) ;
-  typedef NTSTATUS (__stdcall* tfn_qip ) ( HANDLE,
-                    PROCESSINFOCLASS, void*, ULONG, PULONG ) ;
-  tfn_qip pfn_qip = tfn_qip( GetProcAddress( p_ntdll, 
-                     "NtQueryInformationProcess" ) ) ;
-  assert( pfn_qip ) ;
-  PROCESS_BASIC_INFORMATION pbi ;
-  ULONG res_len = 0 ;
-  NTSTATUS status = pfn_qip( hproc,  ProcessBasicInformation,
-                     &pbi, sizeof(pbi), &res_len ) ;
-  assert( res_len == sizeof(pbi) ) ;
-  size_t ppeb = size_t( pbi.PebBaseAddress ) ;
+ // we have to read the PEB, which is essentially the "header" of a process' RAM
+ // so far this implementation only works with x64 --> x64 process
+ // so it's wip
 
-  char peb[ sizeof(PEB) ] ;
-  SIZE_T read;
-  ReadProcessMemory( hproc, pbi.PebBaseAddress, 
-                           peb, sizeof(peb), &read ) ; 
-  assert( read == sizeof(peb) ) ;
+ auto queryInfo = (pNtQueryInformationProcess)GetProcAdress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+// this is a very sketchy line of code
+// it calls NtQueryInformationProcess from internal kernel functions
+// i would've saved myself all this pain if I just used the WMI wrapper
+// but wmi has a reputation for being slow as heck
+// thankfully, even though microslop claims this stuff is "undocumented", many generous
+// red teamers and other people have created a quite sizable amount of docs
+// so thank them, not me
 
-  enum { OFFSET_PEB = 0x10, OFFSET_X = 0x48 };
-  
-  void* ptr = (void*) *(INT_PTR*)(peb + OFFSET_PEB ) ;
-  char buffer[ OFFSET_X + sizeof(void*) ] ;
-  ReadProcessMemory( hproc, ptr, buffer, sizeof(buffer), &read ) ; 
-  assert( read == sizeof(buffer) ) ;
-  
-  void* penv = (void*) *(INT_PTR*)( buffer + OFFSET_X ) ;
-  enum { MAX_ENV_SIZE = 4096 }; 
-  wchar_t* env = new wchar_t[ MAX_ENV_SIZE ] ;
-  ReadProcessMemory( hproc, penv, env, MAX_ENV_SIZE, &read ) ; 
-  assert( read > 0 ) ;
-  
-  return env ;
+PROCCESS_BASIC_INFORMATION pbi;
+if (NtQueryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+    // all this code seems very C-style since most of the stuff like docs were thought for c
+    // the code I'm basing this off manually creates a handle right here but we already created one
+    // so the handle gets passed to this function and we don't need to clean up our handle just yet, just return
+    // but we still should add a cout to see where it failed
+
+    std::cerr << "NtQuery Failed";
+    return ""; // failure
+
 }
 
-// i found this on this forum https://www.daniweb.com/programming/software-development/threads/114975/c-win-api-capture-env-variables-of-another-process
-// i accidentally found a bunch of so called red teamers and malware documentation along the way which is... uh... weird... since i didn't even need it...
-// and how is that stuff even on google man that sounds like something straight from the dark web
+// the PEB for the cmd line stuff is somewhere in the PEB, called ProcessParamters 
+// then from there we can read the CommandLine struct
+// it's all a bunch of dang structs with pointers to other structs
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
+    std:cerr << "Failed to read ProcessParameters pointer";
+    // I know, very cryptic, but I will make this better later
+
+    return "";
+
+}
+
+UNICODE_STRING cmdLStruct;
+if (!ReadProcessMemory(hproc, (BYTE)*procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), NULL)) {
+    std::cerr << "Failed to read CommandLine struct";
+    return "";
+
+}
+
+std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+   std::cerr << "Failed to read buffer";
+    return ""; 
+}
+
+std::wstring stringBuffer = buffer.data();
+// we don't wanna return a wstring so let's convert it
+return WideToString(stringBuffer);
+}
+
+
 
 
 void PrintAncestry(DWORD pid) {
@@ -739,7 +759,8 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     }
 	}
 
-	wchar_t* command = GetEnvironmentStringsW(hProcess);
+	std::string command = GetCommandLine(hProcess);
+    
 	
 		if (IsVirtualTerminalModeEnabled()) {
    			 std::cout << "\033[1;34mCommand\033[0m: " << WideToString(command);
