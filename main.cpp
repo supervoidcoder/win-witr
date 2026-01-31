@@ -426,7 +426,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
     // so the handle gets passed to this function and we don't need to clean up our handle just yet, just return
     // but we still should add a cout to see where it failed
 
-    std::cerr << "NtQuery Failed";
+    
     return "Failed to Access (wwitr:ntqueryfailed)"; // failure
 
 }
