@@ -748,16 +748,16 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 	auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
 	if (user.has_value()) {
 		if (IsVirtualTerminalModeEnabled()) {
-   			 std::cout << "\033[1;34mUser\033[0m: " << WideToString(user.value());
+   			 std::cout << "\033[1;34mUser\033[0m: " << WideToString(user.value()) << std::endl;
 		} else {
-				std::cout << "User: " << WideToString(user.value());
+				std::cout << "User: " << WideToString(user.value()) << std::endl;
 			}
 			
 	} else {
 	   if (IsVirtualTerminalModeEnabled()) {
-        std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m"; 
+        std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m" << std::endl; 
     } else {
-        std::cout << "User: N/A (Failed to access info)";
+        std::cout << "User: N/A (Failed to access info)" << std::endl;
     }
 	}
 
