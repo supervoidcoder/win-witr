@@ -69,22 +69,28 @@ jobs:
             Write-Host "Running test: $testName"
             
             try {
-              # Run the test and capture exit code
-              & $_.FullName 2>&1 | Out-Null
+              # Run the test and capture output and exit code
+              $output = & $_.FullName 2>&1
               $exitCode = $LASTEXITCODE
               
               if ($exitCode -eq 0) {
                 $passedTests++
-                $testResults += "✅ $testName - PASSED"
+                # Include output in the result
+                $outputText = if ($output) { "`n  Output: $($output -join "`n  ")" } else { "" }
+                $testResults += "✅ $testName - PASSED$outputText"
                 Write-Host "✅ Test passed: $testName"
               } else {
                 $failedTests++
-                $testResults += "❌ $testName - FAILED (Exit code: $exitCode)"
+                # Include output and exit code in the result
+                $outputText = if ($output) { "`n  Output: $($output -join "`n  ")" } else { "" }
+                $testResults += "❌ $testName - FAILED (Exit code: $exitCode)$outputText"
                 Write-Host "❌ Test failed: $testName (Exit code: $exitCode)"
               }
             } catch {
               $failedTests++
-              $testResults += "❌ $testName - FAILED (Exception: $_)"
+              # Include exception and any captured output
+              $outputText = if ($output) { "`n  Output: $($output -join "`n  ")" } else { "" }
+              $testResults += "❌ $testName - FAILED (Exception: $_)$outputText"
               Write-Host "❌ Test failed with exception: $testName"
             }
           }
@@ -123,8 +129,12 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          # Determine job status based on previous steps
+          $jobStatus = if ("${{ steps.run_tests.outcome }}" -eq "success") { "success" } else { "failure" }
+          
           $results = @{
             arch = "${{ matrix.arch }}"
+            status = $jobStatus
             total = "${{ steps.run_tests.outputs.total }}"
             passed = "${{ steps.run_tests.outputs.passed }}"
             failed = "${{ steps.run_tests.outputs.failed }}"
@@ -171,17 +181,26 @@ jobs:
             for (const file of files) {
               const data = JSON.parse(fs.readFileSync(file, 'utf8'));
               const arch = data.arch;
+              const status = data.status || 'unknown';
               const total = data.total || 0;
               const passed = data.passed || 0;
               const failed = data.failed || 0;
               
-              if (failed > 0) {
+              // Mark as failed if either tests failed OR job status is not success
+              if (failed > 0 || status !== 'success') {
                 allPassed = false;
               }
               
-              const status = failed === 0 ? '✅' : '❌';
-              commentBody += `### ${status} ${arch.toUpperCase()}\n`;
-              commentBody += `**${passed}/${total} tests passed**\n\n`;
+              // Determine emoji based on both test results and job status
+              const emoji = (failed === 0 && status === 'success') ? '✅' : '❌';
+              commentBody += `### ${emoji} ${arch.toUpperCase()}\n`;
+              
+              // Show appropriate message based on job status
+              if (status !== 'success') {
+                commentBody += `**Job failed** - Tests may not have run due to compile or setup failure\n\n`;
+              } else {
+                commentBody += `**${passed}/${total} tests passed**\n\n`;
+              }
               
               if (data.details && data.details.trim()) {
                 commentBody += '<details>\n';

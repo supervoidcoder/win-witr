@@ -13,6 +13,8 @@ permissions:
 jobs:
   prepare:
     name: Prepare release (check files, version, notes)
+    # Only run if PR was actually merged
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check_files.outputs.should_release }}
@@ -155,9 +157,12 @@ jobs:
           Write-Output "DEBUG: Base SHA: $baseSha"
           Write-Output "DEBUG: Head SHA: $headSha"
           
-          # Get the merge commit message (when PR is merged, this will be the merge commit)
-          # The merge commit is the commit that gets created when the PR is merged to main
-          $mergeCommitBody = git log -1 --pretty=format:"%b" HEAD
+          # Get the merge commit message using the actual merge commit SHA
+          # The merge_commit_sha is the SHA of the commit created when the PR is merged
+          $mergeCommitSha = "${{ github.event.pull_request.merge_commit_sha }}"
+          Write-Output "DEBUG: Merge commit SHA: $mergeCommitSha"
+          
+          $mergeCommitBody = git log -1 --pretty=format:"%b" $mergeCommitSha
           Write-Output "DEBUG: Merge commit body: $mergeCommitBody"
           
           # Get all commit messages in the PR
