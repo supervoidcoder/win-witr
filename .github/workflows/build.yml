@@ -36,8 +36,11 @@ jobs:
       - name: Compile for ${{ matrix.arch }}
         shell: pwsh
         run: |
-          # Compile the executable
+          # Compile the executable with architecture-specific name
           cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr-${{ matrix.arch }}.exe
+          
+          # Create a copy with the standard name for tests
+          Copy-Item -Path "win-witr-${{ matrix.arch }}.exe" -Destination "win-witr.exe"
           
           # Add the current directory to PATH
           $env:PATH = "$PWD;$env:PATH"
@@ -104,9 +107,10 @@ jobs:
           "total=$totalTests" >> $env:GITHUB_OUTPUT
           "passed=$passedTests" >> $env:GITHUB_OUTPUT
           "failed=$failedTests" >> $env:GITHUB_OUTPUT
-          "details<<EOF_DETAILS" >> $env:GITHUB_OUTPUT
+          $delimiter = "EOF_DETAILS_$(Get-Date -Format 'yyyyMMddHHmmss')"
+          "details<<$delimiter" >> $env:GITHUB_OUTPUT
           $testResults -join "`n" >> $env:GITHUB_OUTPUT
-          "EOF_DETAILS" >> $env:GITHUB_OUTPUT
+          "$delimiter" >> $env:GITHUB_OUTPUT
           
           # Exit with error if any tests failed
           if ($failedTests -gt 0) {
