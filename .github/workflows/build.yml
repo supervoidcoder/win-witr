@@ -2,35 +2,202 @@ name: Build Check
 on: [pull_request, push]
 permissions:
   contents: read
+  pull-requests: write  # Required to post comments on PRs
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  # Matrix job that compiles and tests all architectures
+  build-and-test:
+    strategy:
+      fail-fast: false  # Continue testing other architectures even if one fails
+      matrix:
+        include:
+          # x64 architecture - native runner
+          - arch: x64
+            runner: windows-latest
+            vcvars_arch: x64
+          # x86 architecture - runs on x64 via WoW64
+          - arch: x86
+            runner: windows-latest
+            vcvars_arch: x64_x86
+          # ARM64 architecture - native ARM runner for testing
+          - arch: arm64
+            runner: windows-11-arm
+            vcvars_arch: x64_arm64
+    
+    runs-on: ${{ matrix.runner }}
+    
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup MSVC
+      - name: Setup MSVC for ${{ matrix.arch }}
         uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.vcvars_arch }}
 
-      - name: Compile
+      - name: Compile for ${{ matrix.arch }}
         shell: pwsh
         run: |
-          cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
-              # Add the current directory (where win-witr.exe was compiled) to PATH
-              $env:PATH = "$PWD;$env:PATH"
-              
-              # Verify the exe is accessible
-              Write-Host "Checking win-witr.exe availability..."
-              win-witr --version
-      - name: Run Tests
+          # Compile the executable
+          cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr-${{ matrix.arch }}.exe
+          
+          # Add the current directory to PATH
+          $env:PATH = "$PWD;$env:PATH"
+          
+          # Verify the exe is accessible
+          Write-Host "Checking win-witr-${{ matrix.arch }}.exe availability..."
+          .\win-witr-${{ matrix.arch }}.exe --version
+
+      - name: Run Tests for ${{ matrix.arch }}
+        id: run_tests
         shell: pwsh
         run: |
+          # Initialize test counters
+          $totalTests = 0
+          $passedTests = 0
+          $failedTests = 0
+          $testResults = @()
+          
+          # Add the current directory to PATH
+          $env:PATH = "$PWD;$env:PATH"
+          
           # Run all test .bat files
           Get-ChildItem -Path tests -Recurse -Filter *.bat | ForEach-Object {
-            Write-Host "Running test: $($_.FullName)"
-            & $_.FullName
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "Test failed: $($_.Name)"
-              exit 1
+            $totalTests++
+            $testName = $_.Name
+            Write-Host "Running test: $testName"
+            
+            try {
+              & $_.FullName 2>&1 | Out-Null
+              if ($LASTEXITCODE -eq 0) {
+                $passedTests++
+                $testResults += "✅ $testName - PASSED"
+                Write-Host "✅ Test passed: $testName"
+              } else {
+                $failedTests++
+                $testResults += "❌ $testName - FAILED (Exit code: $LASTEXITCODE)"
+                Write-Host "❌ Test failed: $testName"
+              }
+            } catch {
+              $failedTests++
+              $testResults += "❌ $testName - FAILED (Exception: $_)"
+              Write-Host "❌ Test failed with exception: $testName"
             }
           }
-        
+          
+          # Output test summary
+          Write-Host "`n=== Test Summary for ${{ matrix.arch }} ==="
+          Write-Host "Total: $totalTests"
+          Write-Host "Passed: $passedTests"
+          Write-Host "Failed: $failedTests"
+          
+          # Store results for PR comment
+          $results = @{
+            total = $totalTests
+            passed = $passedTests
+            failed = $failedTests
+            details = $testResults -join "`n"
+          }
+          
+          # Export results to GitHub output using multiline format
+          "total=$totalTests" >> $env:GITHUB_OUTPUT
+          "passed=$passedTests" >> $env:GITHUB_OUTPUT
+          "failed=$failedTests" >> $env:GITHUB_OUTPUT
+          $delimiter = "EOF_$([guid]::NewGuid())"
+          "details<<$delimiter" >> $env:GITHUB_OUTPUT
+          $testResults -join "`n" >> $env:GITHUB_OUTPUT
+          "$delimiter" >> $env:GITHUB_OUTPUT
+          
+          # Exit with error if any tests failed
+          if ($failedTests -gt 0) {
+            Write-Error "Some tests failed for ${{ matrix.arch }}"
+            exit 1
+          }
+
+      # Upload test results as artifacts for the comment job
+      - name: Save test results
+        if: always()
+        shell: pwsh
+        run: |
+          $results = @{
+            arch = "${{ matrix.arch }}"
+            total = "${{ steps.run_tests.outputs.total }}"
+            passed = "${{ steps.run_tests.outputs.passed }}"
+            failed = "${{ steps.run_tests.outputs.failed }}"
+            details = "${{ steps.run_tests.outputs.details }}"
+          }
+          
+          $results | ConvertTo-Json | Out-File -FilePath "test-results-${{ matrix.arch }}.json"
+      
+      - name: Upload test results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.arch }}
+          path: test-results-${{ matrix.arch }}.json
+
+  # Job to post test results as a PR comment
+  post-test-results:
+    needs: build-and-test
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          merge-multiple: true
+      
+      - name: Generate and post comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read all test result files
+            const files = fs.readdirSync('.').filter(f => f.startsWith('test-results-') && f.endsWith('.json'));
+            
+            let commentBody = '## 🧪 Test Results\n\n';
+            let allPassed = true;
+            
+            // Process each architecture
+            for (const file of files) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const arch = data.arch;
+              const total = data.total || 0;
+              const passed = data.passed || 0;
+              const failed = data.failed || 0;
+              
+              if (failed > 0) {
+                allPassed = false;
+              }
+              
+              const status = failed === 0 ? '✅' : '❌';
+              commentBody += `### ${status} ${arch.toUpperCase()}\n`;
+              commentBody += `**${passed}/${total} tests passed**\n\n`;
+              
+              if (data.details && data.details.trim()) {
+                commentBody += '<details>\n';
+                commentBody += '<summary>Test Details</summary>\n\n';
+                commentBody += '```\n';
+                commentBody += data.details;
+                commentBody += '\n```\n';
+                commentBody += '</details>\n\n';
+              }
+            }
+            
+            if (allPassed) {
+              commentBody += '\n✨ All tests passed across all architectures!\n';
+            } else {
+              commentBody += '\n⚠️ Some tests failed. Please review the details above.\n';
+            }
+            
+            // Post comment to PR
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+
