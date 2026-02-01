@@ -66,15 +66,18 @@ jobs:
             Write-Host "Running test: $testName"
             
             try {
-              & $_.FullName 2>&1 | Out-Null
-              if ($LASTEXITCODE -eq 0) {
+              # Run the test and capture output and exit code
+              $output = & $_.FullName 2>&1
+              $exitCode = $LASTEXITCODE
+              
+              if ($exitCode -eq 0) {
                 $passedTests++
                 $testResults += "✅ $testName - PASSED"
                 Write-Host "✅ Test passed: $testName"
               } else {
                 $failedTests++
-                $testResults += "❌ $testName - FAILED (Exit code: $LASTEXITCODE)"
-                Write-Host "❌ Test failed: $testName"
+                $testResults += "❌ $testName - FAILED (Exit code: $exitCode)"
+                Write-Host "❌ Test failed: $testName (Exit code: $exitCode)"
               }
             } catch {
               $failedTests++
