@@ -21,7 +21,7 @@ jobs:
           # ARM64 architecture - native ARM runner for testing
           - arch: arm64
             runner: windows-11-arm
-            vcvars_arch: x64_arm64
+            vcvars_arch: arm64
     
     runs-on: ${{ matrix.runner }}
     
