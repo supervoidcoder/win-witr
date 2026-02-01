@@ -66,8 +66,8 @@ jobs:
             Write-Host "Running test: $testName"
             
             try {
-              # Run the test and capture output and exit code
-              $output = & $_.FullName 2>&1
+              # Run the test and capture exit code
+              & $_.FullName 2>&1 | Out-Null
               $exitCode = $LASTEXITCODE
               
               if ($exitCode -eq 0) {
@@ -104,10 +104,9 @@ jobs:
           "total=$totalTests" >> $env:GITHUB_OUTPUT
           "passed=$passedTests" >> $env:GITHUB_OUTPUT
           "failed=$failedTests" >> $env:GITHUB_OUTPUT
-          $delimiter = "EOF_$([guid]::NewGuid())"
-          "details<<$delimiter" >> $env:GITHUB_OUTPUT
+          "details<<EOF_DETAILS" >> $env:GITHUB_OUTPUT
           $testResults -join "`n" >> $env:GITHUB_OUTPUT
-          "$delimiter" >> $env:GITHUB_OUTPUT
+          "EOF_DETAILS" >> $env:GITHUB_OUTPUT
           
           # Exit with error if any tests failed
           if ($failedTests -gt 0) {
