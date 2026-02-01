@@ -68,6 +68,9 @@ jobs:
             $testName = $_.Name
             Write-Host "Running test: $testName"
             
+            # Initialize output variable outside try block
+            $output = $null
+            
             try {
               # Run the test and capture output and exit code
               $output = & $_.FullName 2>&1
