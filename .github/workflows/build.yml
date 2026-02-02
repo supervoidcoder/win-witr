@@ -23,9 +23,20 @@ jobs:
       - name: Compile for ${{ matrix.arch }}
         shell: cmd
         run: |
-          @echo off
-          REM Find vcvarsall.bat dynamically
-          for /f "usebackq tokens=*" %%i in (`"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+          REM Find vcvarsall.bat dynamically - check both possible vswhere.exe locations
+          set "VSWHERE_X86=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          set "VSWHERE_ARM64=C:\Program Files\Microsoft Visual Studio\Installer\vswhere.exe"
+          
+          if exist "%VSWHERE_X86%" (
+            set "VSWHERE_PATH=%VSWHERE_X86%"
+          ) else if exist "%VSWHERE_ARM64%" (
+            set "VSWHERE_PATH=%VSWHERE_ARM64%"
+          ) else (
+            echo Error: vswhere.exe not found in either location.
+            exit /b 1
+          )
+          
+          for /f "usebackq tokens=*" %%i in (`"%VSWHERE_PATH%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
             set "VS_PATH=%%i"
           )
           
