@@ -155,6 +155,10 @@ jobs:
           Write-Output "DEBUG: Base SHA: $baseSha"
           Write-Output "DEBUG: Head SHA: $headSha"
           
+          # Get the merge commit (HEAD) message body for personal release notes
+          $mergeCommitBody = git log -1 --pretty=format:"%b" HEAD
+          Write-Output "DEBUG: Merge commit body: $mergeCommitBody"
+          
           # Get all commit messages in the PR
           $commits = @(git log --pretty=format:"%h|%s|%b" "$baseSha..$headSha")
           Write-Output "DEBUG: Found $($commits.Count) commits in PR"
@@ -215,7 +219,14 @@ jobs:
           }
           
           # Build release notes
-          $releaseNotes = "## Changes`n`n"
+          $releaseNotes = ""
+          
+          # Add merge commit body at the top if it exists
+          if (-not [string]::IsNullOrWhiteSpace($mergeCommitBody)) {
+            $releaseNotes += "$mergeCommitBody`n`n---`n`n"
+          }
+          
+          $releaseNotes += "## Changes`n`n"
           
           if ($features.Count -gt 0) {
             $releaseNotes += "### ✨ Features`n"

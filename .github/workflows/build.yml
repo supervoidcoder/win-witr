@@ -3,27 +3,69 @@ on: [pull_request, push]
 permissions:
   contents: read
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-and-test:
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+            vcvars_arch: x64
+          - arch: x86
+            runner: windows-latest
+            vcvars_arch: x64_x86
+          - arch: arm64
+            runner: windows-11-arm
+            vcvars_arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Compile for ${{ matrix.arch }}
+        shell: cmd
+        run: |
+          REM Find vcvarsall.bat dynamically - check both possible vswhere.exe locations
+          set "VSWHERE_LEGACY=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          set "VSWHERE_NATIVE=C:\Program Files\Microsoft Visual Studio\Installer\vswhere.exe"
+          
+          if exist "%VSWHERE_LEGACY%" (
+            set "VSWHERE_PATH=%VSWHERE_LEGACY%"
+          ) else if exist "%VSWHERE_NATIVE%" (
+            set "VSWHERE_PATH=%VSWHERE_NATIVE%"
+          ) else (
+            echo Error: vswhere.exe not found in either location.
+            exit /b 1
+          )
+          
+          for /f "usebackq tokens=*" %%i in (`"%VSWHERE_PATH%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+            set "VS_PATH=%%i"
+          )
+          
+          if not exist "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" (
+            echo Error: vcvarsall.bat not found.
+            exit /b 1
+          )
 
-      - name: Compile
+          REM Initialize environment for the target architecture
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" ${{ matrix.vcvars_arch }}
+
+          set outName=win-witr-${{ matrix.arch }}.exe
+          echo Compiling %outName%...
+          cl /O2 /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:%outName%
+          if errorlevel 1 exit /b 1
+
+      - name: Run Tests for ${{ matrix.arch }}
         shell: pwsh
         run: |
-          cl /O2 /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
-              # Add the current directory (where win-witr.exe was compiled) to PATH
-              $env:PATH = "$PWD;$env:PATH"
-              
-              # Verify the exe is accessible
-              Write-Host "Checking win-witr.exe availability..."
-              win-witr --version
-      - name: Run Tests
-        shell: pwsh
-        run: |
+          # Add the current directory (where win-witr-${{ matrix.arch }}.exe was compiled) to PATH
+          $env:PATH = "$PWD;$env:PATH"
+          
+          # Copy the architecture-specific exe to the generic name for tests
+          Copy-Item "win-witr-${{ matrix.arch }}.exe" "win-witr.exe"
+          
+          # Verify the exe is accessible
+          Write-Host "Checking win-witr.exe availability..."
+          win-witr --version
+          
           # Run all test .bat files
           $env:force_ansi = 1
           Get-ChildItem -Path tests -Recurse -Filter *.bat | ForEach-Object {
