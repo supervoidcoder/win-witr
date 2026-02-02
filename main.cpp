@@ -57,7 +57,10 @@ This is kept as a bunch of strings to be easier to call than a dictionary, map, 
 Less words to type ;)
 */
 std::string forkAuthor = ""; // if this is a fork of this project, put your name here! Please be nice and leave my name too :)
-std::string version = "v0.1.0"; // Version of this Windows port
+#ifndef VERSION_NUMBER
+#define VERSION_NUMBER "v0.1.0"
+#endif
+std::string version = VERSION_NUMBER; // Version of this Windows port
 thread_local std::string currentParentExe = ""; // to store the name of our own parent process for error hints
 
 std::string WideToString(const std::wstring& wstr);
@@ -413,8 +416,11 @@ std::string GetCommandLine(HANDLE hproc) {
 
 BOOL isWow64 = FALSE;
 if (!IsWow64Process(hproc, &isWow64)) {
-    
-    return "Failed to Access (wwitr:wow64checkfail)";
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:wow64checkfail)";
+    }
 }
 bool isWoW64 = isWow64; // this variable naming will surely not cause any problemes in the forseeable future
 
@@ -440,9 +446,11 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
     // so the handle gets passed to this function and we don't need to clean up our handle just yet, just return
     // but we still should add a cout to see where it failed
 
-    
-    return "Failed to Access (wwitr:ntqueryfailed)"; // failure
-
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m"; // failure
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)"; // failure
+    }
 }
 
 // the PEB for the cmd line stuff is somewhere in the PEB, called ProcessParamters 
@@ -451,25 +459,31 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    
-
-    return "Failed to Access (wwitr:procParamPtrRead)";
-
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
 }
 
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    
-    return "Failed to Access (wwitr:cmdLStructFail)";
-
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
 }
 
 std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-   
-    return "Failed to Access (wwitr:bufferReadFail)"; 
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
 }
 
 std::wstring stringBuffer = buffer.data();
@@ -481,19 +495,31 @@ return WideToString(stringBuffer);
     // unfortunately getting the PEB of a WoW64 process from an x64 process is not
     // as straightforward as x64 --> x64 but uh...
     // i like scraping my sanity off so i'm going to do it anyway MWAHAHAH
-    return "Reading WoW64 process not supported yet";
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mReading WoW64 process not supported yet\033[0m";
+    } else {
+        return "Reading WoW64 process not supported yet";
+    }
 }
  #elif defined(_M_IX86) 
-    return "x86 not supported yet";
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mx86 not supported yet\033[0m";
+    } else {
+        return "x86 not supported yet";
+    }
  #elif defined(_M_ARM64) 
-    return "ARM64 not supported yet";
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mARM64 not supported yet\033[0m";
+    } else {
+        return "ARM64 not supported yet";
+    }
 #else 
-    return "Failed to Access (wwitr:unknownarch)";
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:unknownarch)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:unknownarch)";
+    }
 #endif
-
-}
-
-
 
 
 void PrintAncestry(DWORD pid) {

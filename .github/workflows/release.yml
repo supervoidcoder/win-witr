@@ -335,7 +335,7 @@ jobs:
 
           set outName=win-witr-${{ matrix.arch }}.exe
           echo Compiling %outName%...
-          cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:%outName%
+          cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /DVERSION_NUMBER="${{ needs.prepare.outputs.version }}" /Fe:%outName%
           if errorlevel 1 exit /b 1
 
       - name: Upload build artifact for ${{ matrix.arch }}
