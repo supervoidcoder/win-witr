@@ -520,7 +520,7 @@ return WideToString(stringBuffer);
         return "Failed to Access (wwitr:unknownarch)";
     }
 #endif
-
+}
 
 void PrintAncestry(DWORD pid) {
 	// now we're geting the name
