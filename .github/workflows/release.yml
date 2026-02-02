@@ -13,8 +13,6 @@ permissions:
 jobs:
   prepare:
     name: Prepare release (check files, version, notes)
-    # Only run if PR was actually merged
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check_files.outputs.should_release }}
@@ -157,14 +155,6 @@ jobs:
           Write-Output "DEBUG: Base SHA: $baseSha"
           Write-Output "DEBUG: Head SHA: $headSha"
           
-          # Get the merge commit message using the actual merge commit SHA
-          # The merge_commit_sha is the SHA of the commit created when the PR is merged
-          $mergeCommitSha = "${{ github.event.pull_request.merge_commit_sha }}"
-          Write-Output "DEBUG: Merge commit SHA: $mergeCommitSha"
-          
-          $mergeCommitBody = git log -1 --pretty=format:"%b" $mergeCommitSha
-          Write-Output "DEBUG: Merge commit body: $mergeCommitBody"
-          
           # Get all commit messages in the PR
           $commits = @(git log --pretty=format:"%h|%s|%b" "$baseSha..$headSha")
           Write-Output "DEBUG: Found $($commits.Count) commits in PR"
@@ -224,17 +214,8 @@ jobs:
             }
           }
           
-          # Build release notes with merge commit extended description at the top
-          $releaseNotes = ""
-          
-          # Add merge commit extended description if it exists
-          if (-not [string]::IsNullOrWhiteSpace($mergeCommitBody)) {
-            $releaseNotes += "## Release Notes`n`n"
-            $releaseNotes += "$mergeCommitBody`n`n"
-            $releaseNotes += "---`n`n"
-          }
-          
-          $releaseNotes += "## Changes`n`n"
+          # Build release notes
+          $releaseNotes = "## Changes`n`n"
           
           if ($features.Count -gt 0) {
             $releaseNotes += "### ✨ Features`n"
