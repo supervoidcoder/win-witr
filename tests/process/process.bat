@@ -12,4 +12,6 @@ win-witr services.exe
 win-witr MsMpEng.exe
 win-witr powershell.exe
 win-witr Runner.Listener.exe
-
+win-witr cmd.exe
+win-witr pwsh.exe
+win-witr Runner.Worker.exe
