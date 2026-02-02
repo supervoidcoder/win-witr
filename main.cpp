@@ -478,7 +478,8 @@ return WideToString(stringBuffer);
     // unfortunately getting the PEB of a WoW64 process from an x64 process is not
     // as straightforward as x64 --> x64 but uh...
     // i like scraping my sanity off so i'm going to do it anyway MWAHAHAH
-    
+    return "Reading WoW64 process not supported yet";
+}
  #elif defined(_M_IX86) 
     return "x86 not supported yet";
  #elif defined(_M_ARM64) 
@@ -486,7 +487,7 @@ return WideToString(stringBuffer);
 #else 
     return "Failed to Access (wwitr:unknownarch)";
 #endif
-}
+
 }
 
 
