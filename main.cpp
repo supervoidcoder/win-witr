@@ -411,8 +411,11 @@ std::string GetCommandLine(HANDLE hproc) {
 #ifdef _M_X64
 
 
-    BOOL isWow64 = IsWow64Process(hproc, &isWow64);
-     
+BOOL isWow64 = FALSE;
+if (!IsWow64Process(hproc, &isWow64)) {
+    
+    return "Failed to Access (wwitr:wow64checkfail)";
+}
 bool isWoW64 = isWow64; // this variable naming will surely not cause any problemes in the forseeable future
 
 if (!isWoW64) {
