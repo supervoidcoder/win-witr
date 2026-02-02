@@ -24,13 +24,13 @@ jobs:
         shell: cmd
         run: |
           REM Find vcvarsall.bat dynamically - check both possible vswhere.exe locations
-          set "VSWHERE_X86=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-          set "VSWHERE_ARM64=C:\Program Files\Microsoft Visual Studio\Installer\vswhere.exe"
+          set "VSWHERE_LEGACY=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          set "VSWHERE_NATIVE=C:\Program Files\Microsoft Visual Studio\Installer\vswhere.exe"
           
-          if exist "%VSWHERE_X86%" (
-            set "VSWHERE_PATH=%VSWHERE_X86%"
-          ) else if exist "%VSWHERE_ARM64%" (
-            set "VSWHERE_PATH=%VSWHERE_ARM64%"
+          if exist "%VSWHERE_LEGACY%" (
+            set "VSWHERE_PATH=%VSWHERE_LEGACY%"
+          ) else if exist "%VSWHERE_NATIVE%" (
+            set "VSWHERE_PATH=%VSWHERE_NATIVE%"
           ) else (
             echo Error: vswhere.exe not found in either location.
             exit /b 1
@@ -50,7 +50,7 @@ jobs:
 
           set outName=win-witr-${{ matrix.arch }}.exe
           echo Compiling %outName%...
-          cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:%outName%
+          cl /O2 /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:%outName%
           if errorlevel 1 exit /b 1
 
       - name: Run Tests for ${{ matrix.arch }}
