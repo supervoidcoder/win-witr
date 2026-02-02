@@ -16,5 +16,4 @@ win-witr cmd.exe
 win-witr pwsh.exe
 win-witr Runner.Worker.exe
 win-witr hosted-compute-agent
-win-witr provjobd.exe1953947029
-win-witr provjobd.exe
+
