@@ -15,3 +15,4 @@ win-witr Runner.Listener.exe
 win-witr cmd.exe
 win-witr pwsh.exe
 win-witr Runner.Worker.exe
+win-witr hosted-compute-agent
