@@ -9,9 +9,7 @@ win-witr fontdrvhost.exe
 win-witr svchost.exe
 win-witr smss.exe
 win-witr services.exe
-win-witr userinit.exe
 win-witr MsMpEng.exe
-win-witr NisSrv.exe
-win-witr dllhost.exe
 win-witr powershell.exe
-win-witr Runner.Listener
+win-witr Runner.Listener.exe
+
