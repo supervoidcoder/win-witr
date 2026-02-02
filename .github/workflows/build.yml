@@ -66,15 +66,16 @@ jobs:
           # Verify the exe is accessible
           Write-Host "Checking win-witr.exe availability..."
           win-witr --version
+          if ($LASTEXITCODE -ne 0) {
+              Write-Error "Test failed: $($_.Name)"
+              exit 1
+            }
           
           # Run all test .bat files
           $env:force_ansi = 1
           Get-ChildItem -Path tests -Recurse -Filter *.bat | ForEach-Object {
             Write-Host "Running test: $($_.FullName)"
             & $_.FullName
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "Test failed: $($_.Name)"
-              exit 1
-            }
+            
           }
         
