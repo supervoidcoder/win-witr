@@ -296,7 +296,7 @@ void PrintErrorHints(int errorCode) {
                 std::cerr << "Hah, you're running this in Windows Subsystem for Linux. Run wsl as Admin!" << std::endl;
 
 
-            } else if (currentParentExe == "git-bash.exe") {
+            } else if (currentParentExe == "bash.exe") {
                 std::cerr << "Uh, you're running this from Git Bash. Try running this program from an elevated Command Prompt or Powershell." << std::endl;
             }
                 else {
@@ -407,8 +407,15 @@ std::string GetProcessNameFromPid(DWORD pid) {
     return "";
 }
 
-std::string GetCommandLine(HANDLE hproc)
-{
+std::string GetCommandLine(HANDLE hproc) {
+#ifdef _M_X64
+
+
+    BOOL isWow64 = IsWow64Process(hproc, &isWow64);
+     
+bool isWoW64 = isWow64; // this variable naming will surely not cause any problemes in the forseeable future
+
+if (!isWoW64) {
  // we have to read the PEB, which is essentially the "header" of a process' RAM
  // so far this implementation only works with x64 --> x64 process
  // so it's wip
@@ -465,6 +472,21 @@ if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Lengt
 std::wstring stringBuffer = buffer.data();
 // we don't wanna return a wstring so let's convert it
 return WideToString(stringBuffer);
+
+
+} else {
+    // unfortunately getting the PEB of a WoW64 process from an x64 process is not
+    // as straightforward as x64 --> x64 but uh...
+    // i like scraping my sanity off so i'm going to do it anyway MWAHAHAH
+    
+ #elif defined(_M_IX86) 
+    return "x86 not supported yet";
+ #elif defined(_M_ARM64) 
+    return "ARM64 not supported yet";
+#else 
+    return "Failed to Access (wwitr:unknownarch)";
+#endif
+}
 }
 
 
@@ -718,8 +740,11 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     DWORD size = MAX_PATH;
         
     if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size)) {
-        
-        std::cout << "Executable Path: " << exePath << std::endl;
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\033[34mExecutable Path:\033[0m " << exePath << std::endl;
+        } else {
+            std::cout << "Executable Path: " << exePath << std::endl;
+        }
     } else {
         
         errorCode = GetLastError();
@@ -744,51 +769,56 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
         // with the limited process info
     }
 
+            
+        }
+
+        // Use our little lookup table to give hints for specific errors
+        auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
+        if (user.has_value()) {
+            if (IsVirtualTerminalModeEnabled()) {
+             std::cout << "\033[34mUser\033[0m: " << WideToString(user.value()) << std::endl;
+            } else {
+                std::cout << "User: " << WideToString(user.value()) << std::endl;
+            }
+            
+        } else {
+           if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m" << std::endl; 
+        } else {
+            std::cout << "User: N/A (Failed to access info)" << std::endl;
+        }
+        }
+
+        std::string command = GetCommandLine(hProcess);
+
         
-    }
+            if (IsVirtualTerminalModeEnabled()) {
+                 std::cout << "\033[1;32mCommand\033[0m: " << command;
+            } else {
+                    std::cout << "Command: " << command;
+                }
+                
+        
+        
+        
+        
+        
 
-    // Use our little lookup table to give hints for specific errors
-	auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
-	if (user.has_value()) {
-		if (IsVirtualTerminalModeEnabled()) {
-   			 std::cout << "\033[1;34mUser\033[0m: " << WideToString(user.value()) << std::endl;
-		} else {
-				std::cout << "User: " << WideToString(user.value()) << std::endl;
-			}
-			
-	} else {
-	   if (IsVirtualTerminalModeEnabled()) {
-        std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m" << std::endl; 
-    } else {
-        std::cout << "User: N/A (Failed to access info)" << std::endl;
-    }
-	}
+         
+         // TODO: add color text
+         
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\n\033[1;35mWhy It Exists:\033[0m\n";
+        } else {
+            std::cout << "\nWhy It Exists:\n";
+        }
+        PrintAncestry(pid);
 
-	std::string command = GetCommandLine(hProcess);
-
-	
-		if (IsVirtualTerminalModeEnabled()) {
-   			 std::cout << "\033[1;34mCommand\033[0m: " << command;
-		} else {
-				std::cout << "Command: " << command;
-			}
-			
-	
-	
-	
-	// literally very rough start i just rushed to get this done
-	// still needs lots of error handling, some code modifying
-	// so far i dont even know if the function works due to how rushed i did this
-    
-    
-
-     
-     // TODO: add color text
-     
-    std::cout << "\nWhy It Exists:\n";
-    PrintAncestry(pid);
-
-    std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl; 
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid) << std::endl;
+        } else {
+            std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl;
+        }
     /*
     TODO: 
     This definitely needs a lot more details to be complete like witr. Unfortunately, windows needs even more shenanigans and a whole
