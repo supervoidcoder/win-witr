@@ -94,15 +94,11 @@ Less words to type ;)
 */
 std::string forkAuthor = ""; // if this is a fork of this project, put your name here! Please be nice and leave my name too :)
 std::string version = []() {
-`#ifdef` VERSION_NUMBER
-    return std::string(VERSION_NUMBER);
-`#else`
-    char buf[256];
-    if (GetEnvironmentVariableA("VERSION_NUMBER", buf, sizeof(buf)) > 0) {
-        return std::string(buf);
-    }
-    return std::string("v0.1.0");
-`#endif`
+#ifdef VERSION_NUMBER
+    return std::string(VERSION_NUMBER);  // Release builds only
+#else
+    return std::string("dev-build");     // Local builds - no env var check
+#endif
 }();
 thread_local std::string currentParentExe = ""; // to store the name of our own parent process for error hints
 
