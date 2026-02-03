@@ -331,6 +331,10 @@ jobs:
           # Use cmd to call vcvarsall and then cl
           $outName = "win-witr-${{ matrix.arch }}.exe"
           cmd /c "`"$vcvarsPath`" $vcvarsArch && cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:$outName"
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host "Build failed with exit code $LASTEXITCODE"
+              Exit $LASTEXITCODE
+          }
 
       - name: Upload build artifact for ${{ matrix.arch }}
         uses: actions/upload-artifact@v4
