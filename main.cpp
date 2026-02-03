@@ -470,6 +470,13 @@ if (!isWoW64) {
 
 typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
 // this is a very sketchy line of code
 // it calls NtQueryInformationProcess from internal kernel functions
 // i would've saved myself all this pain if I just used the WMI wrapper
@@ -616,6 +623,13 @@ return WideToString(stringBuffer);
         // we can run the same code as above but with 32 bit offsets
         typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
 
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
@@ -680,6 +694,13 @@ return WideToString(stringBuffer);
 
    typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
 
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
