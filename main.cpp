@@ -34,6 +34,27 @@
 #pragma comment(lib, "ws2_32.lib")    // For Winsock (Networking)
 #pragma comment(lib, "shell32.lib")  // For ShellExecute (Elevation)
 
+
+// i stole the following from google in totally NOT sketchy sites
+// go to GetCommandLine function to see how these are used (and why)
+typedef struct _UNICODE_STRING64 {
+    USHORT Length;
+    USHORT MaximumLength;
+    ULONG  Pad;
+    ULONG64 Buffer;
+} UNICODE_STRING64;
+
+typedef struct _RTL_USER_PROCESS_PARAMETERS64 {
+    BYTE Reserved1[16];
+    ULONG64 Reserved2[10];
+    UNICODE_STRING64 ImagePathName;
+    UNICODE_STRING64 CommandLine; // Offset 0x70
+} RTL_USER_PROCESS_PARAMETERS64;
+
+// --- Function Pointers for Undocumented NT Functions ---
+typedef NTSTATUS (NTAPI *pNtQueryInformationProcess)(HANDLE, UINT, PVOID, ULONG, PULONG);
+typedef NTSTATUS (NTAPI *pNtWow64ReadVirtualMemory64)(HANDLE, ULONG64, PVOID, ULONG64, PULONG64);
+
 /* 
 
 This is a Windows version of the tool witr, which is a utility for finding details about specific processes.
@@ -502,17 +523,254 @@ return WideToString(stringBuffer);
     }
 }
  #elif defined(_M_IX86) 
+ // so yknow, this part is for 32 bit processes
+ // but you can run 32 bit processes on 64 bit windows
+ // how? 🤔 it's because of what's called WoW64 (Windows on Windows 64)
+ // it's not really emulation (unlike Prism on Arm64) but more like a compatibility layer
+ // x64 processors can already run x86 code natively since x64 is sorta an "extension" of x86
+ // it has the same instruction set plus more instructions, as well as the ability to use more than 4GB of RAM 
+ // (not just more, but basically infinite amounts of RAM theoretically)
+ // so wow64 doesn't emulate the CPU, it just intercepts certain system calls and redirects them to 32 bit versions
+ // stored as different dlls in SysWoW64 folder
+ // This means that Windows is basically LYING to us if we are a 32 bit process running on 64 bit Windows
+ // Windows will look us dead in the eye and say "Yup, you're running on a 32 bit windows!"
+ // We can bypass this with this below function call
+     BOOL areWeWoW64 = FALSE;
+    AreWeWoW64(GetCurrentProcess(), &areWeWoW64); // check if WE are wow64
+    if (!areWeWoW64) {
+        // if we're not wow64, then we're genuinely 32 bit windows
+        // we can run the same code as above but with 32 bit offsets
+        typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
     if (IsVirtualTerminalModeEnabled()) {
-        return "\033[31mx86 not supported yet\033[0m";
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
-        return "x86 not supported yet";
+        return "Failed to Access (wwitr:ntqueryfailed)";
     }
+}
+
+PVOID procParamPtr = nullptr;
+//for wow64 processes, the offset is different
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+} else {
+    // if we are wow64, then we are a 32 bit process running on 64 bit windows
+    // so now we should check if the target process is wow64 too
+
+    //⚠️🚨 indentation alert 
+    // since literally like half this function and its different 
+    // branches for compilation is copy pasted code,
+    // my indents got mangled :(
+    // and rn im too lazy to fix them so screw indentations 
+
+
+    BOOL targetIsWow64 = FALSE;
+    
+    // if the target process is WoW64 too, then we can use the same code as above!
+    // easy peasy
+
+    TargetIsWoW64(hproc, &targetIsWow64);
+    if (targetIsWow64) {
+
+   typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+//for wow64 processes, the offset is different
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+
+    } else {
+        // if the target process is NOT WoW64, that means
+        // we're a 32 bit process trying to read a 64 bit process
+        // which we will support
+        // but why??? 😭😭😭✌️
+        // why would people do this??? if you have a x64 OS just download the x64 version of win-witr???
+
+        // that's right, I did this to MYSELF!!
+
+        
+        // these are the least sketchiest links bro trust
+        // https://guidedhacking.com/threads/how-to-read-x64-memory-from-x86-using-ntwow64readvirtualmemory64.13789/
+        // https://stackoverflow.com/questions/7446887/get-command-line-string-of-64-bit-process-from-32-bit-process#:~:text=%23include%20%22stdafx.h%22,=%20si.wProcessorArchitecture%20==%20PROCESSOR_ARCHITECTURE_AMD64%20?
+        // thanks google!!! 
+        
+         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+        auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(ntdll, "NtQueryInformationProcess");
+        auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
+
+        if (!queryInfo || !readMem64) return "Failed: Function pointers missing";
+
+        ULONG64 peb64Address = 0;
+        if (queryInfo(hproc, 26, &peb64Address, sizeof(peb64Address), NULL) != 0 || peb64Address == 0) {
+            return "Failed to Access (wwitr:ntqueryfailed)";
+        }
+
+        ULONG64 procParamPtr64 = 0;
+        if (readMem64(hproc, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL) != 0) {
+            return "Failed to Access (wwitr:procParamPtrRead)";
+        }
+
+        UNICODE_STRING64 cmdLStruct64;
+        if (readMem64(hproc, procParamPtr64 + 0x70, &cmdLStruct64, sizeof(cmdLStruct64), NULL) != 0) {
+            return "Failed to Access (wwitr:cmdLStructFail)";
+        }
+
+        if (cmdLStruct64.Length == 0) return "";
+        std::vector<wchar_t> buffer(cmdLStruct64.Length / sizeof(wchar_t) + 1, 0);
+        if (readMem64(hproc, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL) != 0) {
+            return "Failed to Access (wwitr:bufferReadFail)";
+        }
+
+        std::wstring wstr(buffer.data());
+        return WideToString(wstr);
+    
+
+        
+    }
+
+}
  #elif defined(_M_ARM64) 
+
+
+// this is just the same code apparently
+//idk i don't use no surface laptops
+BOOL isWow64 = FALSE;
+if (!IsWow64Process(hproc, &isWow64)) {
     if (IsVirtualTerminalModeEnabled()) {
-        return "\033[31mARM64 not supported yet\033[0m";
+        return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
     } else {
-        return "ARM64 not supported yet";
+        return "Failed to Access (wwitr:wow64checkfail)";
     }
+}
+bool isWoW64 = isWow64;
+
+if (!isWoW64) {
+
+typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+
+
+} else {
+    
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mReading WoW64 process not supported yet\033[0m";
+    } else {
+        return "Reading WoW64 process not supported yet";
+    }
+}
 #else 
     if (IsVirtualTerminalModeEnabled()) {
         return "\033[31mFailed to Access (wwitr:unknownarch)\033[0m";
