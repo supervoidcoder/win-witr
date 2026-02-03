@@ -53,7 +53,15 @@ This is kept as a bunch of strings to be easier to call than a dictionary, map, 
 Less words to type ;)
 */
 std::string forkAuthor = ""; // if this is a fork of this project, put your name here! Please be nice and leave my name too :)
-std::string version = "v0.1.0"; // Version of this Windows port
+#define STRINGIZE2(x) #x
+#define STRINGIZE(x) STRINGIZE2(x)
+std::string version = []() {
+#ifdef VERSION_NUMBER
+    return std::string(STRINGIZE(VERSION_NUMBER));  // Release builds only
+#else
+    return std::string("dev-build");     // Local builds - no env var check
+#endif
+}();
 thread_local std::string currentParentExe = ""; // to store the name of our own parent process for error hints
 
 std::string WideToString(const std::wstring& wstr);
