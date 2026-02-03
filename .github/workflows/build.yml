@@ -67,7 +67,7 @@ jobs:
           Write-Host "Checking win-witr.exe availability..."
           win-witr --version
           if ($LASTEXITCODE -ne 0) {
-              Write-Error "Test failed: $($_.Name)"
+              Write-Error "it's broken 💥"
               exit 1
             }
           

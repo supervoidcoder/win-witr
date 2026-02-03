@@ -87,10 +87,13 @@ This is kept as a bunch of strings to be easier to call than a dictionary, map, 
 Less words to type ;)
 */
 std::string forkAuthor = ""; // if this is a fork of this project, put your name here! Please be nice and leave my name too :)
-#ifndef VERSION_NUMBER
-#define VERSION_NUMBER "v0.1.0"
-#endif
-std::string version = VERSION_NUMBER; // Version of this Windows port
+std::string version = []() {
+    char buf[256];
+    if (GetEnvironmentVariableA("VERSION_NUMBER", buf, sizeof(buf)) > 0) {
+        return std::string(buf);
+    }
+    return std::string("v0.1.0");
+}();
 thread_local std::string currentParentExe = ""; // to store the name of our own parent process for error hints
 
 std::string WideToString(const std::wstring& wstr);
@@ -506,7 +509,12 @@ if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cm
     }
 }
 
-std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
     if (IsVirtualTerminalModeEnabled()) {
@@ -732,12 +740,13 @@ return WideToString(stringBuffer);
             }
         }
 
-        if (cmdLStruct64.Length == 0) {
+        if (cmdLStruct64.Length == 0 || (cmdLStruct64.Length % sizeof(wchar_t)) != 0 || cmdLStruct64.Length > 65534) {
             if (openedHandle) CloseHandle(openedHandle);
             return "";
         }
 
-        std::vector<wchar_t> buffer(cmdLStruct64.Length / sizeof(wchar_t) + 1, 0);
+        size_t wchar_count = cmdLStruct64.Length / sizeof(wchar_t);
+        std::vector<wchar_t> buffer(wchar_count + 1, 0);
         status = readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
@@ -806,7 +815,12 @@ if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cm
     }
 }
 
-std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
     if (IsVirtualTerminalModeEnabled()) {
