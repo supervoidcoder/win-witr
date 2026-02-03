@@ -665,33 +665,77 @@ return WideToString(stringBuffer);
         // https://stackoverflow.com/questions/7446887/get-command-line-string-of-64-bit-process-from-32-bit-process#:~:text=%23include%20%22stdafx.h%22,=%20si.wProcessorArchitecture%20==%20PROCESSOR_ARCHITECTURE_AMD64%20?
         // thanks google!!! 
         
-         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
         auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(ntdll, "NtQueryInformationProcess");
         auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
 
-        if (!queryInfo || !readMem64) return "Failed: Function pointers missing";
+        if (!queryInfo || !readMem64) {
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:functionptrs)";
+            }
+        }
+
+      
+        HANDLE targetHandle = hproc;
+        HANDLE openedHandle = NULL;
+        DWORD targetPid = 0;
+        if (hproc != NULL) {
+            targetPid = GetProcessId(hproc);
+        }
+        if (targetPid != 0) {
+            
+            openedHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, targetPid);
+            if (openedHandle) targetHandle = openedHandle;
+        }
 
         ULONG64 peb64Address = 0;
-        if (queryInfo(hproc, 26, &peb64Address, sizeof(peb64Address), NULL) != 0 || peb64Address == 0) {
-            return "Failed to Access (wwitr:ntqueryfailed)";
+        if (queryInfo(targetHandle, 26, &peb64Address, sizeof(peb64Address), NULL) != 0 || peb64Address == 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:ntqueryfailed)";
+            }
         }
 
         ULONG64 procParamPtr64 = 0;
-        if (readMem64(hproc, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL) != 0) {
-            return "Failed to Access (wwitr:procParamPtrRead)";
+        if (readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL) != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:procParamPtrRead)";
+            }
         }
 
         UNICODE_STRING64 cmdLStruct64;
-        if (readMem64(hproc, procParamPtr64 + 0x70, &cmdLStruct64, sizeof(cmdLStruct64), NULL) != 0) {
-            return "Failed to Access (wwitr:cmdLStructFail)";
+        if (readMem64(targetHandle, procParamPtr64 + 0x70, &cmdLStruct64, sizeof(cmdLStruct64), NULL) != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:cmdLStructFail)";
+            }
         }
 
-        if (cmdLStruct64.Length == 0) return "";
+        if (cmdLStruct64.Length == 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            return "";
+        }
+
         std::vector<wchar_t> buffer(cmdLStruct64.Length / sizeof(wchar_t) + 1, 0);
-        if (readMem64(hproc, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL) != 0) {
-            return "Failed to Access (wwitr:bufferReadFail)";
+        if (readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL) != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:bufferReadFail)";
+            }
         }
 
+        if (openedHandle) CloseHandle(openedHandle);
         std::wstring wstr(buffer.data());
         return WideToString(wstr);
     
