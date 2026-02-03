@@ -5,6 +5,20 @@ on:
     types: [closed]
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to build (e.g. v0.1.7)"
+        required: false
+        type: string
+      version_number:
+        description: "Version number for compilation (e.g. 0.1.7)"
+        required: false
+        type: string
+      notes:
+        description: "Release notes override"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -15,16 +29,55 @@ jobs:
     name: Prepare release (check files, version, notes)
     runs-on: ubuntu-latest
     outputs:
-      should_release: ${{ steps.check_files.outputs.should_release }}
-      version: ${{ steps.next_version.outputs.version }}
-      version_number: ${{ steps.next_version.outputs.version_number }}
-      notes: ${{ steps.parse_commit.outputs.notes }}
+      should_release: ${{ steps.override.outputs.should_release || steps.check_files.outputs.should_release }}
+      version: ${{ steps.override.outputs.version || steps.next_version.outputs.version }}
+      version_number: ${{ steps.override.outputs.version_number || steps.next_version.outputs.version_number }}
+      notes: ${{ steps.override.outputs.notes || steps.parse_commit.outputs.notes }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Override outputs for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        id: override
+        shell: pwsh
+        run: |
+          Write-Output "should_release=true" >> $env:GITHUB_OUTPUT
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.version }}")) {
+            Write-Output "version=${{ inputs.version }}" >> $env:GITHUB_OUTPUT
+          }
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.version_number }}")) {
+            Write-Output "version_number=${{ inputs.version_number }}" >> $env:GITHUB_OUTPUT
+          }
+          if (-not [string]::IsNullOrWhiteSpace("${{ inputs.notes }}")) {
+            Write-Output "notes=${{ inputs.notes }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Resolve last merged PR for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        id: resolve_pr
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $repo = "${{ github.repository }}"
+          $headers = @{"Authorization" = "token $env:GITHUB_TOKEN"; "Accept" = "application/vnd.github.v3+json"}
+          $prs = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=50" -Headers $headers -UseBasicParsing
+          $merged = $prs | Where-Object { $_.merged_at -ne $null } | Select-Object -First 1
+          if (-not $merged) {
+            Write-Error "No merged PR found for base=main"
+            exit 1
+          }
+          Write-Output "base_sha=$($merged.base.sha)" >> $env:GITHUB_OUTPUT
+          Write-Output "head_sha=$($merged.head.sha)" >> $env:GITHUB_OUTPUT
+          $body = $merged.body
+          if ([string]::IsNullOrWhiteSpace($body)) { $body = "" }
+          $body = $body -replace "`r?`n", " "
+          Write-Output "merge_body=$body" >> $env:GITHUB_OUTPUT
+
       - name: Check if source files changed
+        if: github.event_name != 'workflow_dispatch'
         id: check_files
         shell: pwsh
         run: |
@@ -55,7 +108,7 @@ jobs:
           }
 
       - name: Get latest release tag
-        if: steps.check_files.outputs.should_release == 'true'
+        if: github.event_name != 'workflow_dispatch' && steps.check_files.outputs.should_release == 'true'
         id: get_latest_tag
         shell: pwsh
         env:
@@ -120,7 +173,7 @@ jobs:
           }
 
       - name: Determine next version
-        if: steps.check_files.outputs.should_release == 'true'
+        if: github.event_name != 'workflow_dispatch' && steps.check_files.outputs.should_release == 'true'
         id: next_version
         shell: pwsh
         run: |
@@ -142,21 +195,30 @@ jobs:
           }
 
       - name: Parse commit message for release notes
-        if: steps.check_files.outputs.should_release == 'true'
+        if: (github.event_name == 'workflow_dispatch' && steps.override.outputs.should_release == 'true') || (github.event_name != 'workflow_dispatch' && steps.check_files.outputs.should_release == 'true')
         id: parse_commit
         shell: pwsh
         run: |
           Write-Output "DEBUG: Starting parse_commit"
           
           # Get all commits from the PR (base to head)
-          $baseSha = "${{ github.event.pull_request.base.sha }}"
-          $headSha = "${{ github.event.pull_request.head.sha }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $baseSha = "${{ steps.resolve_pr.outputs.base_sha }}"
+            $headSha = "${{ steps.resolve_pr.outputs.head_sha }}"
+          } else {
+            $baseSha = "${{ github.event.pull_request.base.sha }}"
+            $headSha = "${{ github.event.pull_request.head.sha }}"
+          }
           
           Write-Output "DEBUG: Base SHA: $baseSha"
           Write-Output "DEBUG: Head SHA: $headSha"
           
           # Get the merge commit (HEAD) message body for personal release notes
-          $mergeCommitBody = git log -1 --pretty=format:"%b" HEAD
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $mergeCommitBody = "${{ steps.resolve_pr.outputs.merge_body }}"
+          } else {
+            $mergeCommitBody = git log -1 --pretty=format:"%b" HEAD
+          }
           Write-Output "DEBUG: Merge commit body: $mergeCommitBody"
           
           # Get all commit messages in the PR
