@@ -661,7 +661,16 @@ if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cm
     }
 }
 
-std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
     if (IsVirtualTerminalModeEnabled()) {
@@ -732,7 +741,16 @@ if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cm
     }
 }
 
-std::vector<wchar_t> buffer(cmdLStruct.Length / sizeof(wchar_t) + 1, 0);
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
     if (IsVirtualTerminalModeEnabled()) {
