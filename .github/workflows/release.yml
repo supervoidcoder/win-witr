@@ -49,6 +49,10 @@ jobs:
           }
           if (-not [string]::IsNullOrWhiteSpace("${{ inputs.version_number }}")) {
             Write-Output "version_number=${{ inputs.version_number }}" >> $env:GITHUB_OUTPUT
+          } elseif (-not [string]::IsNullOrWhiteSpace("${{ inputs.version }}")) {
+            $verNum = "${{ inputs.version }}"
+            if ($verNum.StartsWith("v")) { $verNum = $verNum.Substring(1) }
+            Write-Output "version_number=$verNum" >> $env:GITHUB_OUTPUT
           }
           if (-not [string]::IsNullOrWhiteSpace("${{ inputs.notes }}")) {
             Write-Output "notes=${{ inputs.notes }}" >> $env:GITHUB_OUTPUT
@@ -392,8 +396,8 @@ jobs:
           
           # Use cmd to call vcvarsall and then cl
           $outName = "win-witr-${{ matrix.arch }}.exe"
-          $ver = "${{ needs.prepare.outputs.version_number }}"
-          cmd /c "`"$vcvarsPath`" $vcvarsArch && cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /DVERSION_NUMBER=`"$ver`" /Fe:$outName"
+          $verTag = "${{ needs.prepare.outputs.version }}"
+          cmd /c "`"$vcvarsPath`" $vcvarsArch && cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /DVERSION_NUMBER=`"$verTag`" /Fe:$outName"
           if ($LASTEXITCODE -ne 0) {
               Write-Host "Build failed with exit code $LASTEXITCODE"
               Exit $LASTEXITCODE
