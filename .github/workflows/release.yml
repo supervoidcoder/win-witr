@@ -75,9 +75,29 @@ jobs:
           }
           Write-Output "base_sha=$($merged.base.sha)" >> $env:GITHUB_OUTPUT
           Write-Output "head_sha=$($merged.head.sha)" >> $env:GITHUB_OUTPUT
-          $body = $merged.body
-          if ([string]::IsNullOrWhiteSpace($body)) { $body = "" }
-          $body = $body -replace "`r?`n", " "
+          
+          # Get the merge commit SHA and fetch its message body
+          # This allows personalized release notes to be written in the merge commit message
+          $mergeCommitSha = $merged.merge_commit_sha
+          Write-Output "merge_commit_sha=$mergeCommitSha" >> $env:GITHUB_OUTPUT
+          
+          # Fetch the merge commit details to get its message body
+          if (-not [string]::IsNullOrWhiteSpace($mergeCommitSha)) {
+            try {
+              $commitData = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/commits/$mergeCommitSha" -Headers $headers -UseBasicParsing
+              $commitMessageParts = $commitData.commit.message -split "`n", 2
+              if ($commitMessageParts.Count -gt 1) {
+                $body = $commitMessageParts[1].Trim()
+              } else {
+                $body = ""
+              }
+            } catch {
+              Write-Output "Warning: Could not fetch merge commit body, using empty string"
+              $body = ""
+            }
+          } else {
+            $body = ""
+          }
           Write-Output "merge_body=$body" >> $env:GITHUB_OUTPUT
 
       - name: Check if source files changed
@@ -202,6 +222,8 @@ jobs:
         if: (github.event_name == 'workflow_dispatch' && steps.override.outputs.should_release == 'true') || (github.event_name != 'workflow_dispatch' && steps.check_files.outputs.should_release == 'true')
         id: parse_commit
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           Write-Output "DEBUG: Starting parse_commit"
           
@@ -217,11 +239,43 @@ jobs:
           Write-Output "DEBUG: Base SHA: $baseSha"
           Write-Output "DEBUG: Head SHA: $headSha"
           
-          # Get the merge commit (HEAD) message body for personal release notes
+          # Get the merge commit message body for personalized release notes
+          # This extracts the extended description from the merge commit (not the PR description)
+          # The merge commit body allows writing custom release notes during PR merge
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            # For manual runs, use the merge commit body from resolve_pr step
             $mergeCommitBody = "${{ steps.resolve_pr.outputs.merge_body }}"
           } else {
-            $mergeCommitBody = git log -1 --pretty=format:"%b" HEAD
+            # For PR events, get the merge commit SHA and fetch its body
+            $mergeCommitSha = "${{ github.event.pull_request.merge_commit_sha }}"
+            Write-Output "DEBUG: Merge commit SHA: $mergeCommitSha"
+            
+            if (-not [string]::IsNullOrWhiteSpace($mergeCommitSha)) {
+              try {
+                $repo = "${{ github.repository }}"
+                $headers = @{"Authorization" = "token $env:GITHUB_TOKEN"; "Accept" = "application/vnd.github.v3+json"}
+                $commitData = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/commits/$mergeCommitSha" -Headers $headers -UseBasicParsing
+                $commitMessage = $commitData.commit.message
+                # Split the message to get just the body (everything after the first line)
+                $messageParts = $commitMessage -split "`n", 2
+                if ($messageParts.Count -gt 1) {
+                  $mergeCommitBody = $messageParts[1].Trim()
+                } else {
+                  $mergeCommitBody = ""
+                }
+              } catch {
+                Write-Output "DEBUG: Could not fetch merge commit body via API, falling back to git log"
+                # Fallback to git log if API fails
+                $mergeCommitBody = git log -1 --pretty=format:"%b" "$mergeCommitSha" 2>$null
+                if ([string]::IsNullOrWhiteSpace($mergeCommitBody)) {
+                  Write-Output "DEBUG: Git log fallback returned empty result for merge commit"
+                  $mergeCommitBody = ""
+                }
+              }
+            } else {
+              Write-Output "DEBUG: No merge commit SHA available, using empty body"
+              $mergeCommitBody = ""
+            }
           }
           Write-Output "DEBUG: Merge commit body: $mergeCommitBody"
           
@@ -284,10 +338,12 @@ jobs:
             }
           }
           
-          # Build release notes
+          # Build release notes with BOTH merge commit body AND PR commit history
+          # The merge commit body appears first (for personalized notes), followed by
+          # categorized commit history from the PR
           $releaseNotes = ""
           
-          # Add merge commit body at the top if it exists
+          # Add merge commit body at the top if it exists (personalized release notes)
           if (-not [string]::IsNullOrWhiteSpace($mergeCommitBody)) {
             $releaseNotes += "$mergeCommitBody`n`n---`n`n"
           }
