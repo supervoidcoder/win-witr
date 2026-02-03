@@ -662,11 +662,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cm
 }
 
 if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
-    if (IsVirtualTerminalModeEnabled()) {
-        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
-    } else {
-        return "Failed to Access (wwitr:cmdLStructFail)";
-    }
+    return "";
 }
 
 size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
@@ -742,11 +738,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cm
 }
 
 if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
-    if (IsVirtualTerminalModeEnabled()) {
-        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
-    } else {
-        return "Failed to Access (wwitr:cmdLStructFail)";
-    }
+    return "";
 }
 
 size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
@@ -881,6 +873,14 @@ if (!isWoW64) {
 
 typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
 
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
