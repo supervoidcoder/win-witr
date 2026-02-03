@@ -669,7 +669,12 @@ return WideToString(stringBuffer);
         auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(ntdll, "NtQueryInformationProcess");
         auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
 
+        std::cerr << "[DEBUG] ntdll=" << (void*)ntdll
+                  << " queryInfo=" << (void*)queryInfo
+                  << " readMem64=" << (void*)readMem64 << std::endl;
+
         if (!queryInfo || !readMem64) {
+            std::cerr << "[ERROR] required functions not found in ntdll.dll" << std::endl;
             if (IsVirtualTerminalModeEnabled()) {
                 return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
             } else {
@@ -677,22 +682,32 @@ return WideToString(stringBuffer);
             }
         }
 
-      
         HANDLE targetHandle = hproc;
         HANDLE openedHandle = NULL;
         DWORD targetPid = 0;
         if (hproc != NULL) {
             targetPid = GetProcessId(hproc);
         }
+        std::cerr << "[DEBUG] original hproc=" << (void*)hproc << " pid=" << targetPid << std::endl;
+
         if (targetPid != 0) {
-            
             openedHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, targetPid);
-            if (openedHandle) targetHandle = openedHandle;
+            if (!openedHandle) {
+                std::cerr << "[WARN] OpenProcess failed pid=" << targetPid << " GetLastError=" << GetLastError() << std::endl;
+            } else {
+                std::cerr << "[DEBUG] openedHandle=" << (void*)openedHandle << std::endl;
+                targetHandle = openedHandle;
+            }
         }
 
         ULONG64 peb64Address = 0;
-        if (queryInfo(targetHandle, 26, &peb64Address, sizeof(peb64Address), NULL) != 0 || peb64Address == 0) {
+        NTSTATUS status = queryInfo(targetHandle, 26, &peb64Address, sizeof(peb64Address), NULL);
+        std::cerr << "[DEBUG] NtQueryInformationProcess returned=0x" << std::hex << status << std::dec
+                  << " peb64Address=0x" << std::hex << peb64Address << std::dec << std::endl;
+
+        if (status != 0 || peb64Address == 0) {
             if (openedHandle) CloseHandle(openedHandle);
+            std::cerr << "[ERROR] NtQueryInformationProcess failed or returned empty PEB64" << std::endl;
             if (IsVirtualTerminalModeEnabled()) {
                 return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
             } else {
@@ -701,8 +716,13 @@ return WideToString(stringBuffer);
         }
 
         ULONG64 procParamPtr64 = 0;
-        if (readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL) != 0) {
+        status = readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL);
+        std::cerr << "[DEBUG] NtWow64ReadVirtualMemory64(peb+0x20) returned=0x" << std::hex << status << std::dec
+                  << " procParamPtr64=0x" << std::hex << procParamPtr64 << std::dec << std::endl;
+
+        if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
+            std::cerr << "[ERROR] failed to read ProcessParameters pointer from PEB64" << std::endl;
             if (IsVirtualTerminalModeEnabled()) {
                 return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
             } else {
@@ -711,8 +731,14 @@ return WideToString(stringBuffer);
         }
 
         UNICODE_STRING64 cmdLStruct64;
-        if (readMem64(targetHandle, procParamPtr64 + 0x70, &cmdLStruct64, sizeof(cmdLStruct64), NULL) != 0) {
+        status = readMem64(targetHandle, procParamPtr64 + 0x70, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
+        std::cerr << "[DEBUG] NtWow64ReadVirtualMemory64(procParams+0x70) returned=0x" << std::hex << status << std::dec
+                  << " Length=" << cmdLStruct64.Length << " MaximumLength=" << cmdLStruct64.MaximumLength
+                  << " Buffer=0x" << std::hex << cmdLStruct64.Buffer << std::dec << std::endl;
+
+        if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
+            std::cerr << "[ERROR] failed to read UNICODE_STRING64 from remote process" << std::endl;
             if (IsVirtualTerminalModeEnabled()) {
                 return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
             } else {
@@ -722,12 +748,17 @@ return WideToString(stringBuffer);
 
         if (cmdLStruct64.Length == 0) {
             if (openedHandle) CloseHandle(openedHandle);
+            std::cerr << "[DEBUG] CommandLine length is zero" << std::endl;
             return "";
         }
 
         std::vector<wchar_t> buffer(cmdLStruct64.Length / sizeof(wchar_t) + 1, 0);
-        if (readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL) != 0) {
+        status = readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL);
+        std::cerr << "[DEBUG] NtWow64ReadVirtualMemory64(cmdBuffer) returned=0x" << std::hex << status << std::dec << std::endl;
+
+        if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
+            std::cerr << "[ERROR] failed to read commandline buffer at 0x" << std::hex << cmdLStruct64.Buffer << std::dec << std::endl;
             if (IsVirtualTerminalModeEnabled()) {
                 return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
             } else {
