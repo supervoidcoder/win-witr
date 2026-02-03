@@ -44,6 +44,12 @@ typedef struct _UNICODE_STRING64 {
     ULONG64 Buffer;
 } UNICODE_STRING64;
 
+typedef struct _UNICODE_STRING32 {
+    USHORT Length;
+    USHORT MaximumLength;
+    ULONG Buffer;
+} UNICODE_STRING32;
+
 typedef struct _PROCESS_BASIC_INFORMATION64 {
     ULONG64 Reserved1;
     ULONG64 PebBaseAddress;
@@ -530,14 +536,65 @@ return WideToString(stringBuffer);
 
 
 } else {
-    // unfortunately getting the PEB of a WoW64 process from an x64 process is not
-    // as straightforward as x64 --> x64 but uh...
-    // i like scraping my sanity off so i'm going to do it anyway MWAHAHAH
-    if (IsVirtualTerminalModeEnabled()) {
-        return "\033[31mReading WoW64 process not supported yet\033[0m";
-    } else {
-        return "Reading WoW64 process not supported yet";
+    // haahhahahah reading wow64 from x64 is so funny waahahahah
+    // what if we do the most logical thing and just put everything in a 
+    // try catch... honestly I don't know what's all the hate with
+    // it, the performance hit is negligible if there's no errors
+    // and I think it's only slow in python
+    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+    if (!queryInfo) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:functionptrs)";
+        }
     }
+
+    ULONG_PTR peb32Address = 0;
+    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
+    if (status != 0 || peb32Address == 0) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:ntqueryfailed)";
+        }
+    }
+
+    ULONG procParamPtr32 = 0;
+    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:procParamPtrRead)";
+        }
+    }
+
+    UNICODE_STRING32 cmdLStruct32{};
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x40, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:cmdLStructFail)";
+        }
+    }
+
+    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
+        return "";
+    }
+
+    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
+    std::vector<wchar_t> buffer(wchar_count + 1, 0);
+    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
+    {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:bufferReadFail)";
+        }
+    }
+
+    std::wstring stringBuffer = buffer.data();
+    return WideToString(stringBuffer);
 }
  #elif defined(_M_IX86) 
  // so yknow, this part is for 32 bit processes
@@ -835,12 +892,62 @@ return WideToString(stringBuffer);
 
 
 } else {
-    
-    if (IsVirtualTerminalModeEnabled()) {
-        return "\033[31mReading WoW64 process not supported yet\033[0m";
-    } else {
-        return "Reading WoW64 process not supported yet";
+    // no clue if this works
+
+    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+    if (!queryInfo) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:functionptrs)";
+        }
     }
+
+    ULONG_PTR peb32Address = 0;
+    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
+    if (status != 0 || peb32Address == 0) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:ntqueryfailed)";
+        }
+    }
+
+    ULONG procParamPtr32 = 0;
+    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:procParamPtrRead)";
+        }
+    }
+
+    UNICODE_STRING32 cmdLStruct32{};
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x40, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:cmdLStructFail)";
+        }
+    }
+
+    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
+        return "";
+    }
+
+    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
+    std::vector<wchar_t> buffer(wchar_count + 1, 0);
+    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
+    {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:bufferReadFail)";
+        }
+    }
+
+    std::wstring stringBuffer = buffer.data();
+    return WideToString(stringBuffer);
 }
 #else 
     if (IsVirtualTerminalModeEnabled()) {
