@@ -536,7 +536,7 @@ return WideToString(stringBuffer);
  // Windows will look us dead in the eye and say "Yup, you're running on a 32 bit windows!"
  // We can bypass this with this below function call
      BOOL areWeWoW64 = FALSE;
-    AreWeWoW64(GetCurrentProcess(), &areWeWoW64); // check if WE are wow64
+    IsWow64Process(GetCurrentProcess(), &areWeWoW64); // check if WE are wow64
     if (!areWeWoW64) {
         // if we're not wow64, then we're genuinely 32 bit windows
         // we can run the same code as above but with 32 bit offsets
@@ -601,7 +601,7 @@ return WideToString(stringBuffer);
     // if the target process is WoW64 too, then we can use the same code as above!
     // easy peasy
 
-    TargetIsWoW64(hproc, &targetIsWow64);
+    IsWow64Process(hproc, &targetIsWow64);
     if (targetIsWow64) {
 
    typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
