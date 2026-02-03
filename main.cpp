@@ -44,6 +44,14 @@ typedef struct _UNICODE_STRING64 {
     ULONG64 Buffer;
 } UNICODE_STRING64;
 
+typedef struct _PROCESS_BASIC_INFORMATION64 {
+    ULONG64 Reserved1;
+    ULONG64 PebBaseAddress;
+    ULONG64 Reserved2[2];
+    ULONG64 UniqueProcessId;
+    ULONG64 Reserved3;
+} PROCESS_BASIC_INFORMATION64;
+
 typedef struct _RTL_USER_PROCESS_PARAMETERS64 {
     BYTE Reserved1[16];
     ULONG64 Reserved2[10];
@@ -54,6 +62,7 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS64 {
 // --- Function Pointers for Undocumented NT Functions ---
 typedef NTSTATUS (NTAPI *pNtQueryInformationProcess)(HANDLE, UINT, PVOID, ULONG, PULONG);
 typedef NTSTATUS (NTAPI *pNtWow64ReadVirtualMemory64)(HANDLE, ULONG64, PVOID, ULONG64, PULONG64);
+typedef NTSTATUS (NTAPI *pNtWow64QueryInformationProcess64)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 
 /* 
 
@@ -666,14 +675,14 @@ return WideToString(stringBuffer);
         // thanks google!!! 
         
         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
-        auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(ntdll, "NtQueryInformationProcess");
+        auto queryInfo64 = (pNtWow64QueryInformationProcess64)GetProcAddress(ntdll, "NtWow64QueryInformationProcess64");
         auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
 
         std::cerr << "[DEBUG] ntdll=" << (void*)ntdll
-                  << " queryInfo=" << (void*)queryInfo
+                  << " queryInfo64=" << (void*)queryInfo64
                   << " readMem64=" << (void*)readMem64 << std::endl;
 
-        if (!queryInfo || !readMem64) {
+        if (!queryInfo64 || !readMem64) {
             std::cerr << "[ERROR] required functions not found in ntdll.dll" << std::endl;
             if (IsVirtualTerminalModeEnabled()) {
                 return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
@@ -700,14 +709,17 @@ return WideToString(stringBuffer);
             }
         }
 
-        ULONG64 peb64Address = 0;
-        NTSTATUS status = queryInfo(targetHandle, 26, &peb64Address, sizeof(peb64Address), NULL);
-        std::cerr << "[DEBUG] NtQueryInformationProcess returned=0x" << std::hex << status << std::dec
+        PROCESS_BASIC_INFORMATION64 pbi64{};
+        ULONG returnLen = 0;
+        NTSTATUS status = queryInfo64(targetHandle, ProcessBasicInformation, &pbi64, sizeof(pbi64), &returnLen);
+        ULONG64 peb64Address = pbi64.PebBaseAddress;
+        std::cerr << "[DEBUG] NtWow64QueryInformationProcess64 returned=0x" << std::hex << status << std::dec
+                  << " returnLen=" << returnLen
                   << " peb64Address=0x" << std::hex << peb64Address << std::dec << std::endl;
 
         if (status != 0 || peb64Address == 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            std::cerr << "[ERROR] NtQueryInformationProcess failed or returned empty PEB64" << std::endl;
+            std::cerr << "[ERROR] NtWow64QueryInformationProcess64 failed or returned empty PEB64" << std::endl;
             if (IsVirtualTerminalModeEnabled()) {
                 return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
             } else {
