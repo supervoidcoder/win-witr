@@ -85,9 +85,9 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($mergeCommitSha)) {
             try {
               $commitData = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/commits/$mergeCommitSha" -Headers $headers -UseBasicParsing
-              $commitBody = $commitData.commit.message -split "`n", 2
-              if ($commitBody.Count -gt 1) {
-                $body = $commitBody[1].Trim()
+              $commitMessageParts = $commitData.commit.message -split "`n", 2
+              if ($commitMessageParts.Count -gt 1) {
+                $body = $commitMessageParts[1].Trim()
               } else {
                 $body = ""
               }
@@ -267,7 +267,10 @@ jobs:
                 Write-Output "DEBUG: Could not fetch merge commit body via API, falling back to git log"
                 # Fallback to git log if API fails
                 $mergeCommitBody = git log -1 --pretty=format:"%b" "$mergeCommitSha" 2>$null
-                if (-not $mergeCommitBody) { $mergeCommitBody = "" }
+                if ([string]::IsNullOrWhiteSpace($mergeCommitBody)) {
+                  Write-Output "DEBUG: Git log fallback returned empty result for merge commit"
+                  $mergeCommitBody = ""
+                }
               }
             } else {
               Write-Output "DEBUG: No merge commit SHA available, using empty body"
