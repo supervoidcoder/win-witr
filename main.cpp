@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2025 supervoidcoder
 // This file is part of win-witr.
- 
+
+
+#define NO_STRICT
 #include <windows.h>
+#include <winternl.h>
 #include <tlhelp32.h> 
 #include <iostream>
 #include <string>
@@ -17,6 +20,7 @@
 #include <ctime>      
 #include <algorithm> 
 #include <conio.h> 
+#include <cassert>
 
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
 // The above macro converts Windows FILETIME to Unix epoch time in seconds.
@@ -29,6 +33,42 @@
 #pragma comment(lib, "iphlpapi.lib")  // For Network stuff (Port to PID mapping)
 #pragma comment(lib, "ws2_32.lib")    // For Winsock (Networking)
 #pragma comment(lib, "shell32.lib")  // For ShellExecute (Elevation)
+
+
+// i stole the following from google in totally NOT sketchy sites
+// go to GetCommandLine function to see how these are used (and why)
+typedef struct _UNICODE_STRING64 {
+    USHORT Length;
+    USHORT MaximumLength;
+    ULONG  Pad;
+    ULONG64 Buffer;
+} UNICODE_STRING64;
+
+typedef struct _UNICODE_STRING32 {
+    USHORT Length;
+    USHORT MaximumLength;
+    ULONG Buffer;
+} UNICODE_STRING32;
+
+typedef struct _PROCESS_BASIC_INFORMATION64 {
+    ULONG64 Reserved1;
+    ULONG64 PebBaseAddress;
+    ULONG64 Reserved2[2];
+    ULONG64 UniqueProcessId;
+    ULONG64 Reserved3;
+} PROCESS_BASIC_INFORMATION64;
+
+typedef struct _RTL_USER_PROCESS_PARAMETERS64 {
+    BYTE Reserved1[16];
+    ULONG64 Reserved2[10];
+    UNICODE_STRING64 ImagePathName;
+    UNICODE_STRING64 CommandLine; // Offset 0x70
+} RTL_USER_PROCESS_PARAMETERS64;
+
+// --- Function Pointers for Undocumented NT Functions ---
+typedef NTSTATUS (NTAPI *pNtQueryInformationProcess)(HANDLE, UINT, PVOID, ULONG, PULONG);
+typedef NTSTATUS (NTAPI *pNtWow64ReadVirtualMemory64)(HANDLE, ULONG64, PVOID, ULONG64, PULONG64);
+typedef NTSTATUS (NTAPI *pNtWow64QueryInformationProcess64)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 
 /* 
 
@@ -104,6 +144,10 @@ void EnsureCurrentParentExe() {
 
 
 bool IsVirtualTerminalModeEnabled() {
+    if (GetEnvironmentVariableA("force_ansi", NULL, 0) > 0) {
+        return true;
+    }
+    // i'll probably make force-ansi a flag later but eh
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut == INVALID_HANDLE_VALUE) return false;
 
@@ -296,7 +340,7 @@ void PrintErrorHints(int errorCode) {
                 std::cerr << "Hah, you're running this in Windows Subsystem for Linux. Run wsl as Admin!" << std::endl;
 
 
-            } else if (currentParentExe == "git-bash.exe") {
+            } else if (currentParentExe == "bash.exe") {
                 std::cerr << "Uh, you're running this from Git Bash. Try running this program from an elevated Command Prompt or Powershell." << std::endl;
             }
                 else {
@@ -405,6 +449,554 @@ std::string GetProcessNameFromPid(DWORD pid) {
 
     CloseHandle(snapshot);
     return "";
+}
+
+std::string GetCommandLine(HANDLE hproc) {
+#ifdef _M_X64
+
+
+BOOL isWow64 = FALSE;
+if (!IsWow64Process(hproc, &isWow64)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:wow64checkfail)";
+    }
+}
+bool isWoW64 = isWow64; // this variable naming will surely not cause any problemes in the forseeable future
+
+if (!isWoW64) {
+ // we have to read the PEB, which is essentially the "header" of a process' RAM
+ // so far this implementation only works with x64 --> x64 process
+ // so it's wip
+
+typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+// this is a very sketchy line of code
+// it calls NtQueryInformationProcess from internal kernel functions
+// i would've saved myself all this pain if I just used the WMI wrapper
+// but wmi has a reputation for being slow as heck
+// thankfully, even though microslop claims this stuff is "undocumented", many generous
+// red teamers and other people have created a quite sizable amount of docs
+// so thank them, not me
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+    // all this code seems very C-style since most of the stuff like docs were thought for c
+    // the code I'm basing this off manually creates a handle right here but we already created one
+    // so the handle gets passed to this function and we don't need to clean up our handle just yet, just return
+    // but we still should add a cout to see where it failed
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m"; // failure
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)"; // failure
+    }
+}
+
+// the PEB for the cmd line stuff is somewhere in the PEB, called ProcessParamters 
+// then from there we can read the CommandLine struct
+// it's all a bunch of dang structs with pointers to other structs
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+// we don't wanna return a wstring so let's convert it
+return WideToString(stringBuffer);
+
+
+} else {
+    // haahhahahah reading wow64 from x64 is so funny waahahahah
+    // what if we do the most logical thing and just put everything in a 
+    // try catch... honestly I don't know what's all the hate with
+    // it, the performance hit is negligible if there's no errors
+    // and I think it's only slow in python
+    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+    if (!queryInfo) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:functionptrs)";
+        }
+    }
+
+    ULONG_PTR peb32Address = 0;
+    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
+    if (status != 0 || peb32Address == 0) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:ntqueryfailed)";
+        }
+    }
+
+    ULONG procParamPtr32 = 0;
+    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:procParamPtrRead)";
+        }
+    }
+
+    UNICODE_STRING32 cmdLStruct32{};
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x40, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:cmdLStructFail)";
+        }
+    }
+
+    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
+        return "";
+    }
+
+    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
+    std::vector<wchar_t> buffer(wchar_count + 1, 0);
+    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
+    {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:bufferReadFail)";
+        }
+    }
+
+    std::wstring stringBuffer = buffer.data();
+    return WideToString(stringBuffer);
+}
+ #elif defined(_M_IX86) 
+ // so yknow, this part is for 32 bit processes
+ // but you can run 32 bit processes on 64 bit windows
+ // how? 🤔 it's because of what's called WoW64 (Windows on Windows 64)
+ // it's not really emulation (unlike Prism on Arm64) but more like a compatibility layer
+ // x64 processors can already run x86 code natively since x64 is sorta an "extension" of x86
+ // it has the same instruction set plus more instructions, as well as the ability to use more than 4GB of RAM 
+ // (not just more, but basically infinite amounts of RAM theoretically)
+ // so wow64 doesn't emulate the CPU, it just intercepts certain system calls and redirects them to 32 bit versions
+ // stored as different dlls in SysWoW64 folder
+ // This means that Windows is basically LYING to us if we are a 32 bit process running on 64 bit Windows
+ // Windows will look us dead in the eye and say "Yup, you're running on a 32 bit windows!"
+ // We can bypass this with this below function call
+     BOOL areWeWoW64 = FALSE;
+    IsWow64Process(GetCurrentProcess(), &areWeWoW64); // check if WE are wow64
+    if (!areWeWoW64) {
+        // if we're not wow64, then we're genuinely 32 bit windows
+        // we can run the same code as above but with 32 bit offsets
+        typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+//for wow64 processes, the offset is different
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+} else {
+    // if we are wow64, then we are a 32 bit process running on 64 bit windows
+    // so now we should check if the target process is wow64 too
+
+    //⚠️🚨 indentation alert 
+    // since literally like half this function and its different 
+    // branches for compilation is copy pasted code,
+    // my indents got mangled :(
+    // and rn im too lazy to fix them so screw indentations 
+
+
+    BOOL targetIsWow64 = FALSE;
+    
+    // if the target process is WoW64 too, then we can use the same code as above!
+    // easy peasy
+
+    IsWow64Process(hproc, &targetIsWow64);
+    if (targetIsWow64) {
+
+   typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+//for wow64 processes, the offset is different
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+
+    } else {
+        // if the target process is NOT WoW64, that means
+        // we're a 32 bit process trying to read a 64 bit process
+        // which we will support
+        // but why??? 😭😭😭✌️
+        // why would people do this??? if you have a x64 OS just download the x64 version of win-witr???
+
+        // that's right, I did this to MYSELF!!
+
+        
+        // these are the least sketchiest links bro trust
+        // https://guidedhacking.com/threads/how-to-read-x64-memory-from-x86-using-ntwow64readvirtualmemory64.13789/
+        // https://stackoverflow.com/questions/7446887/get-command-line-string-of-64-bit-process-from-32-bit-process#:~:text=%23include%20%22stdafx.h%22,=%20si.wProcessorArchitecture%20==%20PROCESSOR_ARCHITECTURE_AMD64%20?
+        // thanks google!!! 
+        
+        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+        auto queryInfo64 = (pNtWow64QueryInformationProcess64)GetProcAddress(ntdll, "NtWow64QueryInformationProcess64");
+        auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
+
+        if (!queryInfo64 || !readMem64) {
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:functionptrs)";
+            }
+        }
+
+        HANDLE targetHandle = hproc;
+        HANDLE openedHandle = NULL;
+        DWORD targetPid = 0;
+        if (hproc != NULL) {
+            targetPid = GetProcessId(hproc);
+        }
+        if (targetPid != 0) {
+            openedHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, targetPid);
+            if (openedHandle) targetHandle = openedHandle;
+        }
+
+        PROCESS_BASIC_INFORMATION64 pbi64{};
+        ULONG returnLen = 0;
+        NTSTATUS status = queryInfo64(targetHandle, ProcessBasicInformation, &pbi64, sizeof(pbi64), &returnLen);
+        ULONG64 peb64Address = pbi64.PebBaseAddress;
+        if (status != 0 || peb64Address == 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:ntqueryfailed)";
+            }
+        }
+
+        ULONG64 procParamPtr64 = 0;
+        status = readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL);
+        if (status != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:procParamPtrRead)";
+            }
+        }
+
+        UNICODE_STRING64 cmdLStruct64;
+        status = readMem64(targetHandle, procParamPtr64 + 0x70, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
+        if (status != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:cmdLStructFail)";
+            }
+        }
+
+        if (cmdLStruct64.Length == 0 || (cmdLStruct64.Length % sizeof(wchar_t)) != 0 || cmdLStruct64.Length > 65534) {
+            if (openedHandle) CloseHandle(openedHandle);
+            return "";
+        }
+
+        size_t wchar_count = cmdLStruct64.Length / sizeof(wchar_t);
+        std::vector<wchar_t> buffer(wchar_count + 1, 0);
+        status = readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL);
+        if (status != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:bufferReadFail)";
+            }
+        }
+
+        if (openedHandle) CloseHandle(openedHandle);
+        std::wstring wstr(buffer.data());
+        return WideToString(wstr);
+    
+
+        
+    }
+
+}
+ #elif defined(_M_ARM64) 
+
+
+// this is just the same code apparently
+//idk i don't use no surface laptops
+BOOL isWow64 = FALSE;
+if (!IsWow64Process(hproc, &isWow64)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:wow64checkfail)";
+    }
+}
+bool isWoW64 = isWow64;
+
+if (!isWoW64) {
+
+typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+
+
+} else {
+    // no clue if this works
+
+    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+    if (!queryInfo) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:functionptrs)";
+        }
+    }
+
+    ULONG_PTR peb32Address = 0;
+    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
+    if (status != 0 || peb32Address == 0) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:ntqueryfailed)";
+        }
+    }
+
+    ULONG procParamPtr32 = 0;
+    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:procParamPtrRead)";
+        }
+    }
+
+    UNICODE_STRING32 cmdLStruct32{};
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x40, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:cmdLStructFail)";
+        }
+    }
+
+    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
+        return "";
+    }
+
+    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
+    std::vector<wchar_t> buffer(wchar_count + 1, 0);
+    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
+    {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:bufferReadFail)";
+        }
+    }
+
+    std::wstring stringBuffer = buffer.data();
+    return WideToString(stringBuffer);
+}
+#else 
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:unknownarch)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:unknownarch)";
+    }
+#endif
 }
 
 void PrintAncestry(DWORD pid) {
@@ -655,8 +1247,11 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
     DWORD size = MAX_PATH;
         
     if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size)) {
-        
-        std::cout << "Executable Path: " << exePath << std::endl;
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\033[34mExecutable Path:\033[0m " << exePath << std::endl;
+        } else {
+            std::cout << "Executable Path: " << exePath << std::endl;
+        }
     } else {
         
         errorCode = GetLastError();
@@ -681,39 +1276,56 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
         // with the limited process info
     }
 
+            
+        }
+
+        // Use our little lookup table to give hints for specific errors
+        auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
+        if (user.has_value()) {
+            if (IsVirtualTerminalModeEnabled()) {
+             std::cout << "\033[34mUser\033[0m: " << WideToString(user.value()) << std::endl;
+            } else {
+                std::cout << "User: " << WideToString(user.value()) << std::endl;
+            }
+            
+        } else {
+           if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m" << std::endl; 
+        } else {
+            std::cout << "User: N/A (Failed to access info)" << std::endl;
+        }
+        }
+
+        std::string command = GetCommandLine(hProcess);
+
         
-    }
+            if (IsVirtualTerminalModeEnabled()) {
+                 std::cout << "\033[1;32mCommand\033[0m: " << command;
+            } else {
+                    std::cout << "Command: " << command;
+                }
+                
+        
+        
+        
+        
+        
 
-    // Use our little lookup table to give hints for specific errors
-	auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
-	if (user.has_value()) {
-		if (IsVirtualTerminalModeEnabled()) {
-   			 std::cout << "\033[1;34mUser\033[0m: " << WideToString(user.value());
-		} else {
-				std::cout << "User: " << WideToString(user.value());
-			}
-			
-	} else {
-	   if (IsVirtualTerminalModeEnabled()) {
-        std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m"; 
-    } else {
-        std::cout << "User: N/A (Failed to access info)";
-    }
-	}
-	
-	// literally very rough start i just rushed to get this done
-	// still needs lots of error handling, some code modifying
-	// so far i dont even know if the function works due to how rushed i did this
-    
-    
+         
+         // TODO: add color text
+         
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\n\033[1;35mWhy It Exists:\033[0m\n";
+        } else {
+            std::cout << "\nWhy It Exists:\n";
+        }
+        PrintAncestry(pid);
 
-     
-     // TODO: add color text
-     
-    std::cout << "\nWhy It Exists:\n";
-    PrintAncestry(pid);
-
-    std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl; 
+        if (IsVirtualTerminalModeEnabled()) {
+            std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid) << std::endl;
+        } else {
+            std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl;
+        }
     /*
     TODO: 
     This definitely needs a lot more details to be complete like witr. Unfortunately, windows needs even more shenanigans and a whole

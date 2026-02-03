@@ -2,4 +2,18 @@ win-witr winlogon.exe
 win-witr lsass.exe
 win-witr win-witr.exe
 win-witr wininit.exe 
+win-witr explorer.exe
+win-witr Registry
+win-witr csrss.exe
+win-witr fontdrvhost.exe
+win-witr svchost.exe
+win-witr smss.exe
+win-witr services.exe
+win-witr MsMpEng.exe
+win-witr powershell.exe
+win-witr Runner.Listener.exe
+win-witr cmd.exe
+win-witr pwsh.exe
+win-witr Runner.Worker.exe
+win-witr hosted-compute-agent
 
