@@ -397,7 +397,7 @@ jobs:
           # Use cmd to call vcvarsall and then cl
           $outName = "win-witr-${{ matrix.arch }}.exe"
           $verTag = "${{ needs.prepare.outputs.version }}"
-          cmd /c "`"$vcvarsPath`" $vcvarsArch && cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /DVERSION_NUMBER=`"$verTag`" /Fe:$outName"
+          cmd /c "`"$vcvarsPath`" $vcvarsArch && cl /O2 /Ot /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /DVERSION_NUMBER=$verTag /Fe:$outName"
           if ($LASTEXITCODE -ne 0) {
               Write-Host "Build failed with exit code $LASTEXITCODE"
               Exit $LASTEXITCODE
