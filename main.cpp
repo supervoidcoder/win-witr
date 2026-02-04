@@ -1789,17 +1789,17 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 
         
             if (IsVirtualTerminalModeEnabled()) {
-                 std::cout << "\033[1;32mCommand\033[0m: " << command;
+                 std::cout << "\033[1;32mCommand\033[0m: " << command << std::endl;
             } else {
-                    std::cout << "Command: " << command;
+                    std::cout << "Command: " << command << std::endl;
                 }
         std::string workdir = GetWorkingDir(hProcess);
 
         
             if (IsVirtualTerminalModeEnabled()) {
-                 std::cout << "\033[1;32mWorking Directory\033[0m: " << workdir;
+                 std::cout << "\033[1;32mWorking Directory\033[0m: " << workdir << std::endl;
             } else {
-                    std::cout << "Working Directory: " << workdir;
+                    std::cout << "Working Directory: " << workdir << std::endl;
                 }
                 
         
