@@ -999,6 +999,495 @@ return WideToString(stringBuffer);
 #endif
 }
 
+/* oooooooooooooooooooooooooooooooooooooooooooooooohhhhhhhh
+big giant block comment to let me know when the massive getcommand line function ends and the get working dir starts
+|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+676767676767676767676767676767676767
+|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||*/
+
+std::string GetWorkingDir(HANDLE hproc) {
+#ifdef _M_X64
+
+
+BOOL isWow64 = FALSE;
+if (!IsWow64Process(hproc, &isWow64)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:wow64checkfail)";
+    }
+}
+bool isWoW64 = isWow64;
+
+if (!isWoW64) {
+
+typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x38, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+
+
+} else {
+    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+    if (!queryInfo) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:functionptrs)";
+        }
+    }
+
+    ULONG_PTR peb32Address = 0;
+    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
+    if (status != 0 || peb32Address == 0) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:ntqueryfailed)";
+        }
+    }
+
+    ULONG procParamPtr32 = 0;
+    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:procParamPtrRead)";
+        }
+    }
+
+    UNICODE_STRING32 cmdLStruct32{};
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x24, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:cmdLStructFail)";
+        }
+    }
+
+    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
+        return "";
+    }
+
+    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
+    std::vector<wchar_t> buffer(wchar_count + 1, 0);
+    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
+    {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:bufferReadFail)";
+        }
+    }
+
+    std::wstring stringBuffer = buffer.data();
+    return WideToString(stringBuffer);
+}
+ #elif defined(_M_IX86) 
+     BOOL areWeWoW64 = FALSE;
+    IsWow64Process(GetCurrentProcess(), &areWeWoW64);
+    if (!areWeWoW64) {
+        typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x24, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+} else {
+
+    BOOL targetIsWow64 = FALSE;
+    
+    IsWow64Process(hproc, &targetIsWow64);
+    if (targetIsWow64) {
+
+   typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x24, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+
+    } else {
+        
+        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+        auto queryInfo64 = (pNtWow64QueryInformationProcess64)GetProcAddress(ntdll, "NtWow64QueryInformationProcess64");
+        auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
+
+        if (!queryInfo64 || !readMem64) {
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:functionptrs)";
+            }
+        }
+
+        HANDLE targetHandle = hproc;
+        HANDLE openedHandle = NULL;
+        DWORD targetPid = 0;
+        if (hproc != NULL) {
+            targetPid = GetProcessId(hproc);
+        }
+        if (targetPid != 0) {
+            openedHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, targetPid);
+            if (openedHandle) targetHandle = openedHandle;
+        }
+
+        PROCESS_BASIC_INFORMATION64 pbi64{};
+        ULONG returnLen = 0;
+        NTSTATUS status = queryInfo64(targetHandle, ProcessBasicInformation, &pbi64, sizeof(pbi64), &returnLen);
+        ULONG64 peb64Address = pbi64.PebBaseAddress;
+        if (status != 0 || peb64Address == 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:ntqueryfailed)";
+            }
+        }
+
+        ULONG64 procParamPtr64 = 0;
+        status = readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL);
+        if (status != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:procParamPtrRead)";
+            }
+        }
+
+        UNICODE_STRING64 cmdLStruct64;
+        status = readMem64(targetHandle, procParamPtr64 + 0x38, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
+        if (status != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:cmdLStructFail)";
+            }
+        }
+
+        if (cmdLStruct64.Length == 0 || (cmdLStruct64.Length % sizeof(wchar_t)) != 0 || cmdLStruct64.Length > 65534) {
+            if (openedHandle) CloseHandle(openedHandle);
+            return "";
+        }
+
+        size_t wchar_count = cmdLStruct64.Length / sizeof(wchar_t);
+        std::vector<wchar_t> buffer(wchar_count + 1, 0);
+        status = readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL);
+        if (status != 0) {
+            if (openedHandle) CloseHandle(openedHandle);
+            if (IsVirtualTerminalModeEnabled()) {
+                return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+            } else {
+                return "Failed to Access (wwitr:bufferReadFail)";
+            }
+        }
+
+        if (openedHandle) CloseHandle(openedHandle);
+        std::wstring wstr(buffer.data());
+        return WideToString(wstr);
+    
+
+        
+    }
+
+}
+ #elif defined(_M_ARM64) 
+
+
+BOOL isWow64 = FALSE;
+if (!IsWow64Process(hproc, &isWow64)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:wow64checkfail)";
+    }
+}
+bool isWoW64 = isWow64;
+
+if (!isWoW64) {
+
+typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
+auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+
+if (!queryInfo) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:functionptrs)";
+    }
+}
+
+PROCESS_BASIC_INFORMATION pbi;
+if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
+
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:ntqueryfailed)";
+    }
+}
+
+PVOID procParamPtr = nullptr;
+if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:procParamPtrRead)";
+    }
+}
+
+UNICODE_STRING cmdLStruct;
+SIZE_T bytesRead2 = 0;
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x38, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:cmdLStructFail)";
+    }
+}
+
+if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
+    return "";
+}
+
+size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
+std::vector<wchar_t> buffer(wchar_count + 1, 0);
+if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
+{
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
+    } else {
+        return "Failed to Access (wwitr:bufferReadFail)"; 
+    }
+}
+
+std::wstring stringBuffer = buffer.data();
+return WideToString(stringBuffer);
+
+
+} else {
+
+    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+    if (!queryInfo) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:functionptrs)";
+        }
+    }
+
+    ULONG_PTR peb32Address = 0;
+    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
+    if (status != 0 || peb32Address == 0) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:ntqueryfailed)";
+        }
+    }
+
+    ULONG procParamPtr32 = 0;
+    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:procParamPtrRead)";
+        }
+    }
+
+    UNICODE_STRING32 cmdLStruct32{};
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x24, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:cmdLStructFail)";
+        }
+    }
+
+    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
+        return "";
+    }
+
+    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
+    std::vector<wchar_t> buffer(wchar_count + 1, 0);
+    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
+    {
+        if (IsVirtualTerminalModeEnabled()) {
+            return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
+        } else {
+            return "Failed to Access (wwitr:bufferReadFail)";
+        }
+    }
+
+    std::wstring stringBuffer = buffer.data();
+    return WideToString(stringBuffer);
+}
+#else 
+    if (IsVirtualTerminalModeEnabled()) {
+        return "\033[31mFailed to Access (wwitr:unknownarch)\033[0m";
+    } else {
+        return "Failed to Access (wwitr:unknownarch)";
+    }
+#endif
+}
+
 void PrintAncestry(DWORD pid) {
 	// now we're geting the name
 // we're making it slower by adding a bunch of snapshots 
@@ -1300,9 +1789,17 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 
         
             if (IsVirtualTerminalModeEnabled()) {
-                 std::cout << "\033[1;32mCommand\033[0m: " << command;
+                 std::cout << "\033[1;32mCommand\033[0m: " << command << std::endl;
             } else {
-                    std::cout << "Command: " << command;
+                    std::cout << "Command: " << command << std::endl;
+                }
+        std::string workdir = GetWorkingDir(hProcess);
+
+        
+            if (IsVirtualTerminalModeEnabled()) {
+                 std::cout << "\033[1;32mWorking Directory\033[0m: " << workdir << std::endl;
+            } else {
+                    std::cout << "Working Directory: " << workdir << std::endl;
                 }
                 
         
