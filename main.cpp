@@ -1668,6 +1668,52 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
 } 
     }
 
+void FindProcessPorts(DWORD targetPid) {
+	// this function gets the ports that a process is listening to 
+	// unfortunately, according to microsoft docs, this only works starting from windows xp sp2 :(
+	// so sorry for those of you using vanilla xp
+	// the docs in question: https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable
+	
+    MIB_TCPTABLE_OWNER_PID* pTcpTable;
+    DWORD dwSize = 0;
+    DWORD dwRetVal = 0;
+    
+
+    dwRetVal = GetExtendedTcpTable(NULL, &dwSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
+
+    if (dwRetVal == ERROR_INSUFFICIENT_BUFFER) {
+        pTcpTable = (MIB_TCPTABLE_OWNER_PID*)malloc(dwSize);
+        if (pTcpTable == NULL) {
+            std::cerr << "Error retrieving\n";
+            return;
+        }
+
+        
+        dwRetVal = GetExtendedTcpTable(pTcpTable, &dwSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
+
+        if (dwRetVal == NO_ERROR) {
+           if (IsVirtualTerminalModeEnabled()) {
+                 std::cout << "\033[1;32mListening\033[0m: "  << std::endl;
+            } else {
+                    std::cout << "Listening: " << std::endl;
+                }
+            for (DWORD i = 0; i < pTcpTable->dwNumEntries; i++) {
+               
+                if (pTcpTable->table[i].dwOwningPid == targetPid && pTcpTable->table[i].dwState == MIB_TCP_STATE_LISTEN) {
+           
+                    u_short port = ntohs(pTcpTable->table[i].dwLocalPort);
+                    std::cout << "\t" << port << std::endl;
+                }
+            }
+        } else {
+            std::cout << "Error retrieving:" << dwRetVal << std::endl;
+        }
+
+        free(pTcpTable);
+    }
+}
+
+
  
 
 
@@ -1870,6 +1916,11 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
             std::cout << "\nWhy It Exists:\n";
         }
         PrintAncestry(pid);
+
+		FindProcessPorts();
+	
+
+		
 		
 
         if (IsVirtualTerminalModeEnabled()) {
