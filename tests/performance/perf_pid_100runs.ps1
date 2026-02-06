@@ -1,23 +1,20 @@
-# Performance test for PID lookup - 100 iterations
-# Measures time taken for each execution to look up a process by PID
+# Performance test for process lookup - 100 iterations
+# Measures time taken for each execution to look up a process by name
 
-Write-Host "Testing PID lookup performance over 100 iterations..." -ForegroundColor Yellow
-
-# Get current PowerShell PID
-$currentPid = $PID
+Write-Host "Testing process lookup performance over 100 iterations..." -ForegroundColor Yellow
 
 # Verify win-witr works before starting measurements
-& win-witr --pid $currentPid | Out-Null
+& win-witr win-witr.exe | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "win-witr --pid command failed"
+    Write-Error "win-witr process lookup failed"
     exit 1
 }
 
 # Run 100 iterations and measure each
-Write-Host "Running 100 iterations of win-witr --pid $currentPid..." -ForegroundColor Cyan
+Write-Host "Running 100 iterations of win-witr win-witr.exe..." -ForegroundColor Cyan
 1..100 | ForEach-Object { 
     Measure-Command { 
-        & win-witr --pid $currentPid | Out-Null
+        & win-witr win-witr.exe | Out-Null
     } | Select-Object TotalMilliseconds 
 }
 
