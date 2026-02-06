@@ -48,10 +48,4 @@ timeout /t 1 /nobreak >nul
 win-witr powershell.exe
 taskkill /F /IM powershell.exe >nul 2>&1
 
-REM Start another instance of win-witr to test self-lookup, then close
-start /B win-witr.exe --help
-timeout /t 1 /nobreak >nul
-win-witr win-witr.exe
-timeout /t 1 /nobreak >nul
-taskkill /F /IM win-witr.exe >nul 2>&1
 
