@@ -1,5 +1,5 @@
 param(
-    [int]$MaxDepth = 50,
+    [int]$MaxDepth = 100,
     [int]$CurrentDepth = 0,
     [string]$CurrentShell = "powershell"
 )
@@ -20,6 +20,7 @@ if ($CurrentDepth -ge $MaxDepth) {
     Write-Host "Reached depth $CurrentDepth - Running stress test..." -ForegroundColor Green
     
     # Run the measurement
+    win-witr win-witr.exe
     $result = Measure-Command { 
         & win-witr win-witr.exe | Out-Null
     }
@@ -53,4 +54,5 @@ if ($nextShell -eq "cmd") {
     $scriptPath = $MyInvocation.MyCommand.Path
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -MaxDepth $MaxDepth -CurrentDepth $nextDepth -CurrentShell "powershell"
     exit $LASTEXITCODE
+
 }
