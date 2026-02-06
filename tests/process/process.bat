@@ -16,4 +16,38 @@ win-witr cmd.exe
 win-witr pwsh.exe
 win-witr Runner.Worker.exe
 win-witr hosted-compute-agent
+win-witr conhost.exe
+win-witr dwm.exe
+win-witr RuntimeBroker.exe
+win-witr SearchIndexer.exe
+win-witr spoolsv.exe
+win-witr taskhostw.exe
+win-witr dllhost.exe
+win-witr sihost.exe
+win-witr ctfmon.exe
+win-witr rdpclip.exe
+win-witr SearchHost.exe
+win-witr StartMenuExperienceHost.exe
+win-witr ShellExperienceHost.exe
+win-witr TextInputHost.exe
+win-witr audiodg.exe
+win-witr wininit.exe
+win-witr wudfhost.exe
+win-witr Memory Compression
+win-witr Secure System
+win-witr SearchProtocolHost.exe
+win-witr SearchFilterHost.exe
+win-witr msedge.exe
+win-witr chrome.exe
+win-witr firefox.exe
+win-witr notepad.exe
+win-witr mspaint.exe
+win-witr calc.exe
+win-witr taskmgr.exe
+win-witr regedit.exe
+win-witr mmc.exe
+win-witr WmiPrvSE.exe
+win-witr svchost.exe
+win-witr lsm.exe
+win-witr LogonUI.exe
 
