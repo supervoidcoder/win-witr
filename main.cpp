@@ -22,6 +22,7 @@
 #include <conio.h> 
 #include <cassert>
 #include <psapi.h>
+#include <iphlpapi.h>
 
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
 // The above macro converts Windows FILETIME to Unix epoch time in seconds.
@@ -1917,7 +1918,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
         }
         PrintAncestry(pid);
 
-		FindProcessPorts();
+		FindProcessPorts(pid);
 	
 
 		
