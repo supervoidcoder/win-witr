@@ -1826,6 +1826,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
             } else {
                     std::cout << "RAM Usage: " << pmc.WorkingSetSize << std::endl;
                 }
+	}
 		
     
                 
