@@ -22,6 +22,7 @@
 #include <conio.h> 
 #include <cassert>
 #include <psapi.h>
+#include <iphlpapi.h>
 
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
 // The above macro converts Windows FILETIME to Unix epoch time in seconds.
@@ -1668,7 +1669,61 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
 } 
     }
 
- 
+void FindProcessPorts(DWORD targetPid) {
+	// this function gets the ports that a process is listening to 
+	// unfortunately, according to microsoft docs, this only works starting from windows xp sp2 :(
+	// so sorry for those of you using vanilla xp
+	// the docs in question: https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable
+	
+    MIB_TCPTABLE_OWNER_PID* pTcpTable;
+    DWORD dwSize = 0;
+    DWORD dwRetVal = 0;
+    
+    dwRetVal = GetExtendedTcpTable(NULL, &dwSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
+
+    if (dwRetVal == ERROR_INSUFFICIENT_BUFFER) {
+        pTcpTable = (MIB_TCPTABLE_OWNER_PID*)malloc(dwSize);
+        if (pTcpTable == NULL) {
+            return;
+        }
+
+        dwRetVal = GetExtendedTcpTable(pTcpTable, &dwSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
+
+        if (dwRetVal == NO_ERROR) {
+            // Collect all listening IP:port pairs first
+            std::vector<std::string> listening;
+            for (DWORD i = 0; i < pTcpTable->dwNumEntries; i++) {
+                if (pTcpTable->table[i].dwOwningPid == targetPid && 
+                    pTcpTable->table[i].dwState == MIB_TCP_STATE_LISTEN) {
+                    struct in_addr addr;
+                    addr.S_un.S_addr = pTcpTable->table[i].dwLocalAddr;
+                    std::string ip = inet_ntoa(addr);
+                    u_short port = ntohs(pTcpTable->table[i].dwLocalPort);
+                    listening.push_back(ip + ":" + std::to_string(port));
+                }
+            }
+
+            if (!listening.empty()) {
+                if (IsVirtualTerminalModeEnabled()) {
+                    std::cout << "\033[1;32mListening\033[0m: \n";
+                } else {
+                    std::cout << "Listening: \n";
+                }
+                
+                
+                for (size_t i = 0; i < listening.size(); i++) {
+                    std::cout << "\t\t" <<  listening[i];
+                    if (i < listening.size() - 1) {
+                        std::cout << ",\n";
+                    }
+                }
+                std::cout << std::endl;
+            }
+        }
+
+        free(pTcpTable);
+    }
+}
 
 
 
@@ -1870,6 +1925,11 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
             std::cout << "\nWhy It Exists:\n";
         }
         PrintAncestry(pid);
+
+		FindProcessPorts(pid);
+	
+
+		
 		
 
         if (IsVirtualTerminalModeEnabled()) {
