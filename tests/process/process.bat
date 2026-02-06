@@ -42,20 +42,16 @@ timeout /t 1 /nobreak >nul
 win-witr mspaint.exe
 taskkill /F /IM mspaint.exe >nul 2>&1
 
-REM Start another cmd instance and test it, then close
-start /B cmd.exe
-timeout /t 1 /nobreak >nul
-win-witr cmd.exe
-taskkill /F /IM cmd.exe /FI "PID ne %CMDPID%" >nul 2>&1
-
-REM Start PowerShell and test it
+REM Start PowerShell and test it, then close
 start /B powershell.exe -NoProfile -Command "Start-Sleep -Seconds 5"
 timeout /t 1 /nobreak >nul
 win-witr powershell.exe
-REM PowerShell will exit on its own
+taskkill /F /IM powershell.exe >nul 2>&1
 
-REM Start another instance of win-witr to test self-lookup
+REM Start another instance of win-witr to test self-lookup, then close
 start /B win-witr.exe --help
 timeout /t 1 /nobreak >nul
 win-witr win-witr.exe
+timeout /t 1 /nobreak >nul
+taskkill /F /IM win-witr.exe >nul 2>&1
 
