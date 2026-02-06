@@ -7,13 +7,13 @@ Write-Host "Testing PID lookup performance..." -ForegroundColor Yellow
 $currentPid = $PID
 
 # Warm-up run
-& win-witr $currentPid | Out-Null
+& win-witr --pid $currentPid | Out-Null
 
 # Measure performance - average of 5 runs
 $measurements = @()
 for ($i = 1; $i -le 5; $i++) {
     $result = Measure-Command {
-        & win-witr $currentPid | Out-Null
+        & win-witr --pid $currentPid | Out-Null
     }
     $measurements += $result.TotalMilliseconds
 }
