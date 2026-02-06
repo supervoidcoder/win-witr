@@ -1679,43 +1679,51 @@ void FindProcessPorts(DWORD targetPid) {
     DWORD dwSize = 0;
     DWORD dwRetVal = 0;
     
-
     dwRetVal = GetExtendedTcpTable(NULL, &dwSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
 
     if (dwRetVal == ERROR_INSUFFICIENT_BUFFER) {
         pTcpTable = (MIB_TCPTABLE_OWNER_PID*)malloc(dwSize);
         if (pTcpTable == NULL) {
-            std::cerr << "Error retrieving\n";
             return;
         }
 
-        
         dwRetVal = GetExtendedTcpTable(pTcpTable, &dwSize, FALSE, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
 
         if (dwRetVal == NO_ERROR) {
-           if (IsVirtualTerminalModeEnabled()) {
-                 std::cout << "\033[1;32mListening\033[0m: "  << std::endl;
-            } else {
-                    std::cout << "Listening: " << std::endl;
-                }
+            // Collect all listening IP:port pairs first
+            std::vector<std::string> listening;
             for (DWORD i = 0; i < pTcpTable->dwNumEntries; i++) {
-               
-                if (pTcpTable->table[i].dwOwningPid == targetPid && pTcpTable->table[i].dwState == MIB_TCP_STATE_LISTEN) {
-           
+                if (pTcpTable->table[i].dwOwningPid == targetPid && 
+                    pTcpTable->table[i].dwState == MIB_TCP_STATE_LISTEN) {
+                    struct in_addr addr;
+                    addr.S_un.S_addr = pTcpTable->table[i].dwLocalAddr;
+                    std::string ip = inet_ntoa(addr);
                     u_short port = ntohs(pTcpTable->table[i].dwLocalPort);
-                    std::cout << "\t" << port << std::endl;
+                    listening.push_back(ip + ":" + std::to_string(port));
                 }
             }
-        } else {
-            std::cout << "Error retrieving:" << dwRetVal << std::endl;
+
+            if (!listening.empty()) {
+                if (IsVirtualTerminalModeEnabled()) {
+                    std::cout << "\033[1;32mListening\033[0m   : ";
+                } else {
+                    std::cout << "Listening   : ";
+                }
+                
+                
+                for (size_t i = 0; i < listening.size(); i++) {
+                    std::cout << "\t\t" <<  listening[i];
+                    if (i < listening.size() - 1) {
+                        std::cout << ",\n";
+                    }
+                }
+                std::cout << std::endl;
+            }
         }
 
         free(pTcpTable);
     }
 }
-
-
- 
 
 
 
