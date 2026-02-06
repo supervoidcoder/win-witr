@@ -1811,7 +1811,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 	// the command and working dir don't affect it because PEB walks take like 5 ms idk
 	// reference: https://learn.microsoft.com/en-us/windows/win32/psapi/collecting-memory-usage-information-for-a-process
 
-	PROCESS_MEMORY_COUNTERS pmc;'
+	PROCESS_MEMORY_COUNTERS pmc;
 	if ( GetProcessMemoryInfo( hProcess, &pmc, sizeof(pmc)) ) {
 		// in the original snippet from windows
 		// THE BRACKET IS AFTER THE IF IN THE LINE DOWN
