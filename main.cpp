@@ -21,6 +21,7 @@
 #include <algorithm> 
 #include <conio.h> 
 #include <cassert>
+#include <psapi.h>
 
 #define windows_time_to_unix_epoch(x) ((x) - 116444736000000000LL) / 10000000LL
 // The above macro converts Windows FILETIME to Unix epoch time in seconds.
@@ -1794,6 +1795,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
                     std::cout << "Command: " << command << std::endl;
                 }
         std::string workdir = GetWorkingDir(hProcess);
+	
 
         
             if (IsVirtualTerminalModeEnabled()) {
@@ -1801,6 +1803,57 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
             } else {
                     std::cout << "Working Directory: " << workdir << std::endl;
                 }
+
+			// to get memory usage,
+	// we have to use psapi.h
+	// the metric we want is WorkingSetSize because the api spits out a bunch of other metrics we don't need
+	// hopefully this doesn't tank performance for yet another api call
+	// the command and working dir don't affect it because PEB walks take like 5 ms idk
+	// reference: https://learn.microsoft.com/en-us/windows/win32/psapi/collecting-memory-usage-information-for-a-process
+
+	PROCESS_MEMORY_COUNTERS pmc;
+	if ( GetProcessMemoryInfo( hProcess, &pmc, sizeof(pmc)) ) {
+		// in the original snippet from windows
+		// THE BRACKET IS AFTER THE IF IN THE LINE DOWN
+		// i can't be talking about code organization but MICROSOFT WHAT
+	size_t RAM = pmc.WorkingSetSize; //should be fine for this, unless you have like 10 exabytes of RAM for a single process somehow
+									
+std::string FRAM = ""; // fram means formatted ram, i'm so creative at var naming
+		if (RAM < 1000) {
+			// if less than 1000 bytes (which is a kilobyte) then just return bytes
+			FRAM = std::to_string(RAM) + " B";
+				}
+		else if (RAM < 1000ULL * 1000) { 
+			
+			FRAM = std::to_string(RAM / 1000) + " KB";
+		}
+		else if (RAM < 1000ULL * 1000 * 1000) { 
+			
+			FRAM = std::to_string(RAM /( 1000ULL * 1000)) + " MB";
+		}
+		else if (RAM < 1000ULL * 1000 * 1000 * 1000) {
+			FRAM = std::to_string(RAM /( 1000ULL * 1000 * 1000)) + " GB";
+		}
+		else {
+			FRAM = std::to_string(RAM /( 1000ULL * 1000 * 1000 * 1000)) + " TB";
+			// if someone actually reaches this i'm concerned
+		}
+			
+			
+			
+		
+		if (IsVirtualTerminalModeEnabled()) {
+                 std::cout << "\033[1;32mRAM Usage\033[0m: " << FRAM << std::endl;
+			// I know RAM is technically a "nerdy tech term" or whatever and it'd be more logical
+		// to say "memory" but I feel like at this point everyone knows what RAM means
+		// especially with the RAM shortage, it should be ingrained in their brains
+		
+            } else {
+                    std::cout << "RAM Usage: " << FRAM << std::endl;
+                }
+	}
+		
+    
                 
         
         
@@ -1817,6 +1870,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
             std::cout << "\nWhy It Exists:\n";
         }
         PrintAncestry(pid);
+		
 
         if (IsVirtualTerminalModeEnabled()) {
             std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid) << std::endl;
