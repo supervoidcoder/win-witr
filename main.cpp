@@ -1705,9 +1705,9 @@ void FindProcessPorts(DWORD targetPid) {
 
             if (!listening.empty()) {
                 if (IsVirtualTerminalModeEnabled()) {
-                    std::cout << "\033[1;32mListening\033[0m   : ";
+                    std::cout << "\033[1;32mListening\033[0m: \n";
                 } else {
-                    std::cout << "Listening   : ";
+                    std::cout << "Listening: \n";
                 }
                 
                 
