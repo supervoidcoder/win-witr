@@ -1823,19 +1823,19 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
 			// if less than 1000 bytes (which is a kilobyte) then just return bytes
 			FRAM = std::to_string(RAM) + " B";
 				}
-		else if (RAM < 1000 * 1000) { 
+		else if (RAM < 1000ULL * 1000) { 
 			
 			FRAM = std::to_string(RAM / 1000) + " KB";
 		}
-		else if (RAM < 1000 * 1000 * 1000) { 
+		else if (RAM < 1000ULL * 1000 * 1000) { 
 			
-			FRAM = std::to_string(RAM /( 1000 * 1000)) + " MB";
+			FRAM = std::to_string(RAM /( 1000ULL * 1000)) + " MB";
 		}
-		else if (RAM < 1000 * 1000 * 1000 * 1000) {
-			FRAM = std::to_string(RAM /( 1000 * 1000 * 1000)) + " GB";
+		else if (RAM < 1000ULL * 1000 * 1000 * 1000) {
+			FRAM = std::to_string(RAM /( 1000ULL * 1000 * 1000)) + " GB";
 		}
 		else {
-			FRAM = std::to_string(RAM /( 1000 * 1000 * 1000 * 1000)) + " TB";
+			FRAM = std::to_string(RAM /( 1000ULL * 1000 * 1000 * 1000)) + " TB";
 			// if someone actually reaches this i'm concerned
 		}
 			
@@ -1849,7 +1849,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
 		// especially with the RAM shortage, it should be ingrained in their brains
 		
             } else {
-                    std::cout << "RAM Usage: " << pmc.WorkingSetSize << std::endl;
+                    std::cout << "RAM Usage: " << FRAM << std::endl;
                 }
 	}
 		
