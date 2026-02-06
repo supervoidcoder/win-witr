@@ -57,7 +57,8 @@ Also, we might split the code into multiple files later on, but for now it's jus
 
 ## AI assistance disclaimer
 
-A code review assistant known as CodeRabbit (@coderabbitai) will be in this repo to assist me with reviewing code. Also, the github actions are vibe coded. No one cares about those.
+A code review assistant known as CodeRabbit (@coderabbitai) will be in this repo to assist me with reviewing code. Also, the github actions are vibe coded using Copilot. No one cares about those.
+Either way, AI should NOT touch the C++ file (unless it's review)
 Please do not submit PRs with AI-generated content.
 Trust me, you can use AI for quick little JS or Python crap, but you do NOT want AI making a whole C++ app. It'd allocate 16/8GB of ram without hesitation. It'll explode your computer. Bamboozle it. Flabbergast it. Flabberbamboozle it. 
 
