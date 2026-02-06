@@ -1490,6 +1490,198 @@ return WideToString(stringBuffer);
 #endif
 }
 
+void ListProcHandles(Handle hproc) {
+	// this is so that we can get the handles of a process
+	// the cool thing is, that the original witr doesn't actually display
+	// handles because either the AI that vibe coded didn't know how to get
+	// or perhaps it just isn't even possible using Go
+	// so C++ for the win
+	// for the win-DOWS!! Haha get it
+
+	// if you're wondering why this code looks like C... that's because...
+// because it is. i just stole it from this random old obscure forum by a guy
+// who did the same thing i needed in 2013 
+
+// https://cplusplus.com/forum/windows/95774/
+// one thing i've learned while coding this is that when you want to do 
+// some weird obscure thing that you're sure nobody has done before, the most likely thing
+// is that the same weird obscure thing has been done before, but it's just really obscure 
+
+_NtQuerySystemInformation NtQuerySystemInformation = 
+        GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
+    _NtDuplicateObject NtDuplicateObject =
+        GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
+    _NtQueryObject NtQueryObject =
+        GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
+    NTSTATUS status;
+    PSYSTEM_HANDLE_INFORMATION handleInfo;
+    ULONG handleInfoSize = 0x10000;
+    ULONG pid;
+    HANDLE processHandle;
+    ULONG i;
+
+    if (argc < 2)
+    {
+        printf("Usage: handles [pid]\n");
+        return 1;
+    }
+
+    pid = _wtoi(argv[1]);
+
+    if (!(processHandle = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid)))
+    {
+        printf("Could not open PID %d! (Don't try to open a system process.)\n", pid);
+        return 1;
+    }
+
+    handleInfo = (PSYSTEM_HANDLE_INFORMATION)malloc(handleInfoSize);
+
+    /* NtQuerySystemInformation won't give us the correct buffer size, 
+       so we guess by doubling the buffer size. */
+    while ((status = NtQuerySystemInformation(
+        SystemHandleInformation,
+        handleInfo,
+        handleInfoSize,
+        NULL
+        )) == STATUS_INFO_LENGTH_MISMATCH)
+        handleInfo = (PSYSTEM_HANDLE_INFORMATION)realloc(handleInfo, handleInfoSize *= 2);
+
+    /* NtQuerySystemInformation stopped giving us STATUS_INFO_LENGTH_MISMATCH. */
+    if (!NT_SUCCESS(status))
+    {
+        printf("NtQuerySystemInformation failed!\n");
+        return 1;
+    }
+
+    for (i = 0; i < handleInfo->HandleCount; i++)
+    {
+        SYSTEM_HANDLE handle = handleInfo->Handles[i];
+        HANDLE dupHandle = NULL;
+        POBJECT_TYPE_INFORMATION objectTypeInfo;
+        PVOID objectNameInfo;
+        UNICODE_STRING objectName;
+        ULONG returnLength;
+
+        /* Check if this handle belongs to the PID the user specified. */
+        if (handle.ProcessId != pid)
+            continue;
+
+        /* Duplicate the handle so we can query it. */
+        if (!NT_SUCCESS(NtDuplicateObject(
+            processHandle,
+            handle.Handle,
+            GetCurrentProcess(),
+            &dupHandle,
+            0,
+            0,
+            0
+            )))
+        {
+            printf("[%#x] Error!\n", handle.Handle);
+            continue;
+        }
+
+        /* Query the object type. */
+        objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
+        if (!NT_SUCCESS(NtQueryObject(
+            dupHandle,
+            ObjectTypeInformation,
+            objectTypeInfo,
+            0x1000,
+            NULL
+            )))
+        {
+            printf("[%#x] Error!\n", handle.Handle);
+            CloseHandle(dupHandle);
+            continue;
+        }
+
+        /* Query the object name (unless it has an access of 
+           0x0012019f, on which NtQueryObject could hang. */
+        if (handle.GrantedAccess == 0x0012019f)
+        {
+            /* We have the type, so display that. */
+            printf(
+                "[%#x] %.*S: (did not get name)\n",
+                handle.Handle,
+                objectTypeInfo->Name.Length / 2,
+                objectTypeInfo->Name.Buffer
+                );
+            free(objectTypeInfo);
+            CloseHandle(dupHandle);
+            continue;
+        }
+
+        objectNameInfo = malloc(0x1000);
+        if (!NT_SUCCESS(NtQueryObject(
+            dupHandle,
+            ObjectNameInformation,
+            objectNameInfo,
+            0x1000,
+            &returnLength
+            )))
+        {
+            /* Reallocate the buffer and try again. */
+            objectNameInfo = realloc(objectNameInfo, returnLength);
+            if (!NT_SUCCESS(NtQueryObject(
+                dupHandle,
+                ObjectNameInformation,
+                objectNameInfo,
+                returnLength,
+                NULL
+                )))
+            {
+                /* We have the type name, so just display that. */
+                printf(
+                    "[%#x] %.*S: (could not get name)\n",
+                    handle.Handle,
+                    objectTypeInfo->Name.Length / 2,
+                    objectTypeInfo->Name.Buffer
+                    );
+                free(objectTypeInfo);
+                free(objectNameInfo);
+                CloseHandle(dupHandle);
+                continue;
+            }
+        }
+
+        /* Cast our buffer into an UNICODE_STRING. */
+        objectName = *(PUNICODE_STRING)objectNameInfo;
+
+        /* Print the information! */
+        if (objectName.Length)
+        {
+            /* The object has a name. */
+            printf(
+                "[%#x] %.*S: %.*S\n",
+                handle.Handle,
+                objectTypeInfo->Name.Length / 2,
+                objectTypeInfo->Name.Buffer,
+                objectName.Length / 2,
+                objectName.Buffer
+                );
+        }
+        else
+        {
+            /* Print something else. */
+            printf(
+                "[%#x] %.*S: (unnamed)\n",
+                handle.Handle,
+                objectTypeInfo->Name.Length / 2,
+                objectTypeInfo->Name.Buffer
+                );
+        }
+
+        free(objectTypeInfo);
+        free(objectNameInfo);
+        CloseHandle(dupHandle);
+    }
+
+    free(handleInfo);
+    CloseHandle(processHandle);
+
+}
+
 void PrintAncestry(DWORD pid) {
 	// now we're geting the name
 // we're making it slower by adding a bunch of snapshots 
@@ -1927,6 +2119,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
         PrintAncestry(pid);
 
 		FindProcessPorts(pid);
+		ListProcHandles(hProcess);
 	
 
 		
