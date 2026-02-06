@@ -9,6 +9,12 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
 Set-Location $repoRoot
 
+# Verify win-witr.exe is accessible
+if (-not (Test-Path "win-witr.exe" -PathType Leaf) -and -not (Get-Command "win-witr" -ErrorAction SilentlyContinue)) {
+    Write-Error "win-witr.exe not found in current directory or PATH"
+    exit 1
+}
+
 if ($CurrentDepth -ge $MaxDepth) {
     # We've reached max depth - run the actual test
     Write-Host "Reached depth $CurrentDepth - Running stress test..." -ForegroundColor Green

@@ -87,7 +87,7 @@ jobs:
           # Run .ps1 files
           Get-ChildItem -Path tests -Recurse -Filter *.ps1 | ForEach-Object {
             Write-Host "Running test: $($_.FullName)"
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $_.FullName
+            & $_.FullName
             if ($LASTEXITCODE -ne 0) {
               Write-Error "Test failed: $($_.FullName)"
               exit 1
