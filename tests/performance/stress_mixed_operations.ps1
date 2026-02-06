@@ -12,7 +12,7 @@ for ($i = 0; $i -lt $iterations; $i++) {
             & win-witr --pid 4 | Out-Null
         }
         1 {
-            & win-witr --port 135 | Out-Null
+            & win-witr svchost.exe | Out-Null
         }
         2 {
             & win-witr explorer.exe | Out-Null
