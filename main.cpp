@@ -1490,7 +1490,7 @@ return WideToString(stringBuffer);
 #endif
 }
 
-void ListProcHandles(Handle hproc) {
+void ListProcHandles(HANDLE hproc) {
 	// this is so that we can get the handles of a process
 	// the cool thing is, that the original witr doesn't actually display
 	// handles because either the AI that vibe coded didn't know how to get
@@ -1681,6 +1681,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
     CloseHandle(processHandle);
 
 }
+
 
 void PrintAncestry(DWORD pid) {
 	// now we're geting the name
