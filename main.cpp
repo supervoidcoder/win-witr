@@ -72,6 +72,104 @@ typedef NTSTATUS (NTAPI *pNtQueryInformationProcess)(HANDLE, UINT, PVOID, ULONG,
 typedef NTSTATUS (NTAPI *pNtWow64ReadVirtualMemory64)(HANDLE, ULONG64, PVOID, ULONG64, PULONG64);
 typedef NTSTATUS (NTAPI *pNtWow64QueryInformationProcess64)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(x) ((x) >= 0)
+#endif
+
+#ifndef STATUS_INFO_LENGTH_MISMATCH
+#define STATUS_INFO_LENGTH_MISMATCH 0xc0000004
+#endif
+
+#ifndef SystemHandleInformation
+#define SystemHandleInformation 16
+#endif
+
+#ifndef ObjectBasicInformation
+#define ObjectBasicInformation 0
+#endif
+
+#ifndef ObjectNameInformation
+#define ObjectNameInformation 1
+#endif
+
+#ifndef ObjectTypeInformation
+#define ObjectTypeInformation 2
+#endif
+
+typedef struct _SYSTEM_HANDLE {
+    ULONG ProcessId;
+    BYTE  ObjectTypeNumber;
+    BYTE  Flags;
+    USHORT Handle;
+    PVOID Object;
+    ACCESS_MASK GrantedAccess;
+} SYSTEM_HANDLE, *PSYSTEM_HANDLE;
+
+typedef struct _SYSTEM_HANDLE_INFORMATION {
+    ULONG HandleCount;
+    SYSTEM_HANDLE Handles[1];
+} SYSTEM_HANDLE_INFORMATION, *PSYSTEM_HANDLE_INFORMATION;
+
+typedef enum _POOL_TYPE {
+    NonPagedPool,
+    PagedPool,
+    NonPagedPoolMustSucceed,
+    DontUseThisType,
+    NonPagedPoolCacheAligned,
+    PagedPoolCacheAligned,
+    NonPagedPoolCacheAlignedMustS
+} POOL_TYPE, *PPOOL_TYPE;
+
+typedef struct _OBJECT_TYPE_INFORMATION {
+    UNICODE_STRING Name;
+    ULONG TotalNumberOfObjects;
+    ULONG TotalNumberOfHandles;
+    ULONG TotalPagedPoolUsage;
+    ULONG TotalNonPagedPoolUsage;
+    ULONG TotalNamePoolUsage;
+    ULONG TotalHandleTableUsage;
+    ULONG HighWaterNumberOfObjects;
+    ULONG HighWaterNumberOfHandles;
+    ULONG HighWaterPagedPoolUsage;
+    ULONG HighWaterNonPagedPoolUsage;
+    ULONG HighWaterNamePoolUsage;
+    ULONG HighWaterHandleTableUsage;
+    ULONG InvalidAttributes;
+    GENERIC_MAPPING GenericMapping;
+    ULONG ValidAccess;
+    BOOLEAN SecurityRequired;
+    BOOLEAN MaintainHandleCount;
+    USHORT MaintainTypeList;
+    POOL_TYPE PoolType;
+    ULONG PagedPoolUsage;
+    ULONG NonPagedPoolUsage;
+} OBJECT_TYPE_INFORMATION, *POBJECT_TYPE_INFORMATION;
+
+typedef NTSTATUS (NTAPI *_NtQuerySystemInformation)(
+    SYSTEM_INFORMATION_CLASS SystemInformationClass,
+    PVOID SystemInformation,
+    ULONG SystemInformationLength,
+    PULONG ReturnLength
+);
+
+typedef NTSTATUS (NTAPI *_NtDuplicateObject)(
+    HANDLE SourceProcessHandle,
+    HANDLE SourceHandle,
+    HANDLE TargetProcessHandle,
+    PHANDLE TargetHandle,
+    ACCESS_MASK DesiredAccess,
+    ULONG Attributes,
+    ULONG Options
+);
+
+typedef NTSTATUS (NTAPI *_NtQueryObject)(
+    HANDLE ObjectHandle,
+    OBJECT_INFORMATION_CLASS ObjectInformationClass,
+    PVOID ObjectInformation,
+    ULONG ObjectInformationLength,
+    PULONG ReturnLength
+);
+
 /* 
 
 This is a Windows version of the tool witr, which is a utility for finding details about specific processes.
@@ -1489,6 +1587,225 @@ return WideToString(stringBuffer);
     }
 #endif
 }
+PVOID GetLibraryProcAddress(const char* LibraryName, const char* ProcName) {
+    HMODULE hMod = GetModuleHandleA(LibraryName);
+    if (!hMod) {
+        hMod = LoadLibraryA(LibraryName);
+        if (!hMod) return nullptr;
+    }
+    return (PVOID)GetProcAddress(hMod, ProcName);
+}
+
+_NtQuerySystemInformation pfnNtQuerySystemInformation = 
+    (_NtQuerySystemInformation)GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
+_NtDuplicateObject pfnNtDuplicateObject =
+    (_NtDuplicateObject)GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
+_NtQueryObject pfnNtQueryObject =
+    (_NtQueryObject)GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
+
+
+
+void ListProcHandles(HANDLE hproc, DWORD pid) {
+	// this is so that we can get the handles of a process
+	// the cool thing is, that the original witr doesn't actually display
+	// handles because either the AI that vibe coded didn't know how to get
+	// or perhaps it just isn't even possible using Go
+	// so C++ for the win
+	// for the win-DOWS!! Haha get it
+
+	// if you're wondering why this code looks like C... that's because...
+// because it is. i just stole it from this random old obscure forum by a guy
+// who did the same thing i needed in 2013 
+
+// https://cplusplus.com/forum/windows/95774/
+// one thing i've learned while coding this is that when you want to do 
+// some weird obscure thing that you're sure nobody has done before, the most likely thing
+// is that the same weird obscure thing has been done before, but it's just really obscure 
+
+_NtQuerySystemInformation pfnNtQuerySystemInformation = 
+    (_NtQuerySystemInformation)GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
+_NtDuplicateObject pfnNtDuplicateObject =
+    (_NtDuplicateObject)GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
+_NtQueryObject pfnNtQueryObject =
+    (_NtQueryObject)GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
+    NTSTATUS status;
+    PSYSTEM_HANDLE_INFORMATION handleInfo;
+    ULONG handleInfoSize = 0x10000;
+    ULONG i;
+
+    
+
+    
+
+    
+
+    handleInfo = (PSYSTEM_HANDLE_INFORMATION)malloc(handleInfoSize);
+
+    /* NtQuerySystemInformation won't give us the correct buffer size, 
+       so we guess by doubling the buffer size. */
+    while ((status = pfnNtQuerySystemInformation(
+        (SYSTEM_INFORMATION_CLASS)SystemHandleInformation,
+        handleInfo,
+        handleInfoSize,
+        NULL
+        )) == STATUS_INFO_LENGTH_MISMATCH)
+        handleInfo = (PSYSTEM_HANDLE_INFORMATION)realloc(handleInfo, handleInfoSize *= 2);
+
+    /* NtQuerySystemInformation stopped giving us STATUS_INFO_LENGTH_MISMATCH. */
+    if (!NT_SUCCESS(status))
+    {
+        printf("NtQuerySystemInformation failed!\n");
+        return;
+    }
+
+    for (i = 0; i < handleInfo->HandleCount; i++)
+    {
+        SYSTEM_HANDLE handle = handleInfo->Handles[i];
+        HANDLE dupHandle = NULL;
+        POBJECT_TYPE_INFORMATION objectTypeInfo;
+        PVOID objectNameInfo;
+        UNICODE_STRING objectName;
+        ULONG returnLength;
+
+        /* Check if this handle belongs to the PID the user specified. */
+        if (handle.ProcessId != pid)
+            continue;
+
+        /* Duplicate the handle so we can query it. */
+        if (!NT_SUCCESS(pfnNtDuplicateObject(
+            hproc,
+            (HANDLE)(ULONG_PTR)handle.Handle,
+            GetCurrentProcess(),
+            &dupHandle,
+            0,
+            0,
+            DUPLICATE_SAME_ACCESS
+            )))
+        {
+            printf("[%#x] Error!\n", handle.Handle);
+            continue;
+        }
+
+        /* Query the object type. */
+        objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
+        if (!NT_SUCCESS(pfnNtQueryObject(
+            dupHandle,
+            (OBJECT_INFORMATION_CLASS)ObjectTypeInformation,
+            objectTypeInfo,
+            0x1000,
+            NULL
+            )))
+        {
+            printf("[%#x] Error!\n", handle.Handle);
+            CloseHandle(dupHandle);
+            continue;
+        }
+		/* Query the object type first */
+		objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
+		if (!NT_SUCCESS(pfnNtQueryObject(dupHandle, (OBJECT_INFORMATION_CLASS)ObjectTypeInformation, objectTypeInfo, 0x1000, NULL))) {
+		    printf("[%#x] Error!\n", handle.Handle);
+		    CloseHandle(dupHandle);
+		    continue;
+		}
+		
+		/* Check if this type is known to hang on name queries */
+		WCHAR typeName[64];
+		wcsncpy_s(typeName, 64, objectTypeInfo->Name.Buffer, objectTypeInfo->Name.Length / 2);
+		typeName[objectTypeInfo->Name.Length / 2] = L'\0';
+		
+		if (wcscmp(typeName, L"File") == 0 || wcscmp(typeName, L"ALPC Port") == 0) {
+		    printf("[%#x] %.*S: (name query skipped)\n", handle.Handle, 
+		           objectTypeInfo->Name.Length / 2, objectTypeInfo->Name.Buffer);
+		    free(objectTypeInfo);
+		    CloseHandle(dupHandle);
+		    continue;
+		}
+        /* Query the object name (unless it has an access of 
+           0x0012019f, on which NtQueryObject could hang. */
+        if (handle.GrantedAccess == 0x0012019f)
+        {
+            /* We have the type, so display that. */
+            printf(
+                "[%#x] %.*S: (did not get name)\n",
+                handle.Handle,
+                objectTypeInfo->Name.Length / 2,
+                objectTypeInfo->Name.Buffer
+                );
+            free(objectTypeInfo);
+            CloseHandle(dupHandle);
+            continue;
+        }
+		
+				
+        objectNameInfo = malloc(0x1000);
+        if (!NT_SUCCESS(pfnNtQueryObject(
+            dupHandle,
+            (OBJECT_INFORMATION_CLASS)ObjectNameInformation,
+            objectNameInfo,
+            0x1000,
+            &returnLength
+            )))
+        {
+            /* Reallocate the buffer and try again. */
+            objectNameInfo = realloc(objectNameInfo, returnLength);
+            if (!NT_SUCCESS(pfnNtQueryObject(
+                dupHandle,
+                (OBJECT_INFORMATION_CLASS)ObjectNameInformation,
+                objectNameInfo,
+                returnLength,
+                NULL
+                )))
+            {
+                /* We have the type name, so just display that. */
+                printf(
+                    "[%#x] %.*S: (could not get name)\n",
+                    handle.Handle,
+                    objectTypeInfo->Name.Length / 2,
+                    objectTypeInfo->Name.Buffer
+                    );
+                free(objectTypeInfo);
+                free(objectNameInfo);
+                CloseHandle(dupHandle);
+                continue;
+            }
+        }
+
+        /* Cast our buffer into an UNICODE_STRING. */
+        objectName = *(PUNICODE_STRING)objectNameInfo;
+
+        /* Print the information! */
+        if (objectName.Length)
+        {
+            /* The object has a name. */
+            printf(
+                "[%#x] %.*S: %.*S\n",
+                handle.Handle,
+                objectTypeInfo->Name.Length / 2,
+                objectTypeInfo->Name.Buffer,
+                objectName.Length / 2,
+                objectName.Buffer
+                );
+        }
+        else
+        {
+            /* Print something else. */
+            printf(
+                "[%#x] %.*S: (unnamed)\n",
+                handle.Handle,
+                objectTypeInfo->Name.Length / 2,
+                objectTypeInfo->Name.Buffer
+                );
+        }
+
+        free(objectTypeInfo);
+        free(objectNameInfo);
+        CloseHandle(dupHandle);
+    }
+
+    free(handleInfo);
+
+}
+
 
 void PrintAncestry(DWORD pid) {
 	// now we're geting the name
@@ -1747,7 +2064,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 	
 
 	
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
     // The above little handle opener is currently a somwehat "agressive" flag, since it
     // Requests read access directly to the process' actual memory. This can get us rejected if called
     // on a very high privilege process, such as lsass.exe This means that we can't read the memory
@@ -1927,6 +2244,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
         PrintAncestry(pid);
 
 		FindProcessPorts(pid);
+		ListProcHandles(hProcess, pid);
 	
 
 		
