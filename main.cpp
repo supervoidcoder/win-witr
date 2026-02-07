@@ -1604,6 +1604,59 @@ _NtQueryObject pfnNtQueryObject =
     (_NtQueryObject)GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
 
 
+// Structure to pass data to the worker thread
+struct QueryObjectThreadData {
+    _NtQueryObject pfnNtQueryObject;
+    HANDLE handle;
+    PVOID buffer;
+    ULONG bufferSize;
+    NTSTATUS status;
+    volatile BOOL completed;
+};
+
+// Worker thread function
+DWORD WINAPI QueryObjectThreadProc(LPVOID param) {
+    QueryObjectThreadData* data = (QueryObjectThreadData*)param;
+    
+    data->status = data->pfnNtQueryObject(
+        data->handle,
+        (OBJECT_INFORMATION_CLASS)ObjectNameInformation,
+        data->buffer,
+        data->bufferSize,
+        NULL
+    );
+    
+    data->completed = TRUE;
+    return 0;
+}
+
+// Safe query with 1ms timeout
+bool QueryObjectNameSafe(_NtQueryObject pfnNtQueryObject, HANDLE handle, 
+                         PVOID buffer, ULONG bufferSize, NTSTATUS* outStatus) {
+    QueryObjectThreadData threadData = {0};
+    threadData.pfnNtQueryObject = pfnNtQueryObject;
+    threadData.handle = handle;
+    threadData.buffer = buffer;
+    threadData.bufferSize = bufferSize;
+    threadData.completed = FALSE;
+    
+    HANDLE hThread = CreateThread(NULL, 0, QueryObjectThreadProc, &threadData, 0, NULL);
+    if (!hThread) return false;
+    
+    // Wait for 1ms
+    DWORD waitResult = WaitForSingleObject(hThread, 1);
+    
+    if (waitResult == WAIT_TIMEOUT) {
+        // Hung! Kill the thread (leaks the thread but keeps us fast)
+        TerminateThread(hThread, 1);
+        CloseHandle(hThread);
+        return false;  // Timed out
+    }
+    
+    *outStatus = threadData.status;
+    CloseHandle(hThread);
+    return true;  // Success
+}
 
 void ListProcHandles(HANDLE hproc, DWORD pid) {
 	// this is so that we can get the handles of a process
@@ -1708,33 +1761,19 @@ _NtQueryObject pfnNtQueryObject =
 		    continue;
 		}
 		
-		/* Check if this type is known to hang on name queries */
-		WCHAR typeName[64];
-		wcsncpy_s(typeName, 64, objectTypeInfo->Name.Buffer, objectTypeInfo->Name.Length / 2);
-		typeName[objectTypeInfo->Name.Length / 2] = L'\0';
-		
-		if (wcscmp(typeName, L"File") == 0 || wcscmp(typeName, L"ALPC Port") == 0) {
-		    printf("[%#x] %.*S: (name query skipped)\n", handle.Handle, 
-		           objectTypeInfo->Name.Length / 2, objectTypeInfo->Name.Buffer);
-		    free(objectTypeInfo);
-		    CloseHandle(dupHandle);
-		    continue;
-		}
-        /* Query the object name (unless it has an access of 
-           0x0012019f, on which NtQueryObject could hang. */
-        if (handle.GrantedAccess == 0x0012019f)
-        {
-            /* We have the type, so display that. */
-            printf(
-                "[%#x] %.*S: (did not get name)\n",
-                handle.Handle,
-                objectTypeInfo->Name.Length / 2,
-                objectTypeInfo->Name.Buffer
-                );
-            free(objectTypeInfo);
-            CloseHandle(dupHandle);
-            continue;
-        }
+		NTSTATUS status;
+if (!QueryObjectNameSafe(pfnNtQueryObject, dupHandle, objectNameInfo, 0x1000, &status)) {
+    // Timed out after 1ms - likely a blocking handle
+    printf("[%#x] %.*S: (query timed out)\n", 
+           handle.Handle,
+           objectTypeInfo->Name.Length / 2,
+           objectTypeInfo->Name.Buffer);
+    free(objectTypeInfo);
+    CloseHandle(dupHandle);
+    continue;
+}
+
+      
 		
 				
         objectNameInfo = malloc(0x1000);
