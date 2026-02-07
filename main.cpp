@@ -1679,7 +1679,7 @@ _NtQueryObject pfnNtQueryObject =
             &dupHandle,
             0,
             0,
-            0
+            DUPLICATE_SAME_ACCESS
             )))
         {
             printf("[%#x] Error!\n", handle.Handle);
@@ -2044,7 +2044,7 @@ void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
 	
 
 	
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
     // The above little handle opener is currently a somwehat "agressive" flag, since it
     // Requests read access directly to the process' actual memory. This can get us rejected if called
     // on a very high privilege process, such as lsass.exe This means that we can't read the memory
