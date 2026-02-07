@@ -145,6 +145,31 @@ typedef struct _OBJECT_TYPE_INFORMATION {
     ULONG NonPagedPoolUsage;
 } OBJECT_TYPE_INFORMATION, *POBJECT_TYPE_INFORMATION;
 
+typedef NTSTATUS (NTAPI *_NtQuerySystemInformation)(
+    SYSTEM_INFORMATION_CLASS SystemInformationClass,
+    PVOID SystemInformation,
+    ULONG SystemInformationLength,
+    PULONG ReturnLength
+);
+
+typedef NTSTATUS (NTAPI *_NtDuplicateObject)(
+    HANDLE SourceProcessHandle,
+    HANDLE SourceHandle,
+    HANDLE TargetProcessHandle,
+    PHANDLE TargetHandle,
+    ACCESS_MASK DesiredAccess,
+    ULONG Attributes,
+    ULONG Options
+);
+
+typedef NTSTATUS (NTAPI *_NtQueryObject)(
+    HANDLE ObjectHandle,
+    OBJECT_INFORMATION_CLASS ObjectInformationClass,
+    PVOID ObjectInformation,
+    ULONG ObjectInformationLength,
+    PULONG ReturnLength
+);
+
 /* 
 
 This is a Windows version of the tool witr, which is a utility for finding details about specific processes.
@@ -1562,6 +1587,12 @@ return WideToString(stringBuffer);
     }
 #endif
 }
+_NtQuerySystemInformation NtQuerySystemInformation = 
+    (_NtQuerySystemInformation)GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
+_NtDuplicateObject NtDuplicateObject =
+    (_NtDuplicateObject)GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
+_NtQueryObject NtQueryObject =
+    (_NtQueryObject)GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
 
 PVOID GetLibraryProcAddress(const char* LibraryName, const char* ProcName) {
     HMODULE hMod = GetModuleHandleA(LibraryName);
@@ -1611,7 +1642,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
     /* NtQuerySystemInformation won't give us the correct buffer size, 
        so we guess by doubling the buffer size. */
     while ((status = NtQuerySystemInformation(
-        SystemHandleInformation,
+        (SYSTEM_INFORMATION_CLASS)SystemHandleInformation,
         handleInfo,
         handleInfoSize,
         NULL
@@ -1657,7 +1688,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
         objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
         if (!NT_SUCCESS(NtQueryObject(
             dupHandle,
-            ObjectTypeInformation,
+            (OBJECT_INFORMATION_CLASS)ObjectTypeInformation,
             objectTypeInfo,
             0x1000,
             NULL
@@ -1687,7 +1718,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
         objectNameInfo = malloc(0x1000);
         if (!NT_SUCCESS(NtQueryObject(
             dupHandle,
-            ObjectNameInformation,
+            (OBJECT_INFORMATION_CLASS)ObjectNameInformation,
             objectNameInfo,
             0x1000,
             &returnLength
@@ -1697,7 +1728,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
             objectNameInfo = realloc(objectNameInfo, returnLength);
             if (!NT_SUCCESS(NtQueryObject(
                 dupHandle,
-                ObjectNameInformation,
+                (OBJECT_INFORMATION_CLASS)ObjectNameInformation,
                 objectNameInfo,
                 returnLength,
                 NULL
