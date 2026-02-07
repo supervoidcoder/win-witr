@@ -1716,7 +1716,7 @@ _NtQueryObject pfnNtQueryObject =
             CloseHandle(dupHandle);
             continue;
         }
-				/* Query the object type first */
+		/* Query the object type first */
 		objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
 		if (!NT_SUCCESS(NtQueryObject(dupHandle, ObjectTypeInformation, objectTypeInfo, 0x1000, NULL))) {
 		    printf("[%#x] Error!\n", handle.Handle);
@@ -1736,6 +1736,7 @@ _NtQueryObject pfnNtQueryObject =
 		    CloseHandle(dupHandle);
 		    continue;
 		}
+				
         objectNameInfo = malloc(0x1000);
         if (!NT_SUCCESS(pfnNtQueryObject(
             dupHandle,
