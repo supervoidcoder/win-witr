@@ -1716,7 +1716,26 @@ _NtQueryObject pfnNtQueryObject =
             CloseHandle(dupHandle);
             continue;
         }
-
+				/* Query the object type first */
+		objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
+		if (!NT_SUCCESS(NtQueryObject(dupHandle, ObjectTypeInformation, objectTypeInfo, 0x1000, NULL))) {
+		    printf("[%#x] Error!\n", handle.Handle);
+		    CloseHandle(dupHandle);
+		    continue;
+		}
+		
+		/* Check if this type is known to hang on name queries */
+		WCHAR typeName[64];
+		wcsncpy_s(typeName, 64, objectTypeInfo->Name.Buffer, objectTypeInfo->Name.Length / 2);
+		typeName[objectTypeInfo->Name.Length / 2] = L'\0';
+		
+		if (wcscmp(typeName, L"File") == 0 || wcscmp(typeName, L"ALPC Port") == 0) {
+		    printf("[%#x] %.*S: (name query skipped)\n", handle.Handle, 
+		           objectTypeInfo->Name.Length / 2, objectTypeInfo->Name.Buffer);
+		    free(objectTypeInfo);
+		    CloseHandle(dupHandle);
+		    continue;
+		}
         objectNameInfo = malloc(0x1000);
         if (!NT_SUCCESS(pfnNtQueryObject(
             dupHandle,
