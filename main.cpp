@@ -1702,7 +1702,7 @@ _NtQueryObject pfnNtQueryObject =
         }
 		/* Query the object type first */
 		objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
-		if (!NT_SUCCESS(NtQueryObject(dupHandle, ObjectTypeInformation, objectTypeInfo, 0x1000, NULL))) {
+		if (!NT_SUCCESS(pfnNtQueryObject(dupHandle, ObjectTypeInformation, objectTypeInfo, 0x1000, NULL))) {
 		    printf("[%#x] Error!\n", handle.Handle);
 		    CloseHandle(dupHandle);
 		    continue;
