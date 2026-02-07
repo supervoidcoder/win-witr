@@ -1700,22 +1700,6 @@ _NtQueryObject pfnNtQueryObject =
             CloseHandle(dupHandle);
             continue;
         }
-
-        /* Query the object name (unless it has an access of 
-           0x0012019f, on which NtQueryObject could hang. */
-        if (handle.GrantedAccess == 0x0012019f)
-        {
-            /* We have the type, so display that. */
-            printf(
-                "[%#x] %.*S: (did not get name)\n",
-                handle.Handle,
-                objectTypeInfo->Name.Length / 2,
-                objectTypeInfo->Name.Buffer
-                );
-            free(objectTypeInfo);
-            CloseHandle(dupHandle);
-            continue;
-        }
 		/* Query the object type first */
 		objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
 		if (!NT_SUCCESS(NtQueryObject(dupHandle, ObjectTypeInformation, objectTypeInfo, 0x1000, NULL))) {
@@ -1736,6 +1720,22 @@ _NtQueryObject pfnNtQueryObject =
 		    CloseHandle(dupHandle);
 		    continue;
 		}
+        /* Query the object name (unless it has an access of 
+           0x0012019f, on which NtQueryObject could hang. */
+        if (handle.GrantedAccess == 0x0012019f)
+        {
+            /* We have the type, so display that. */
+            printf(
+                "[%#x] %.*S: (did not get name)\n",
+                handle.Handle,
+                objectTypeInfo->Name.Length / 2,
+                objectTypeInfo->Name.Buffer
+                );
+            free(objectTypeInfo);
+            CloseHandle(dupHandle);
+            continue;
+        }
+		
 				
         objectNameInfo = malloc(0x1000);
         if (!NT_SUCCESS(pfnNtQueryObject(
