@@ -72,6 +72,79 @@ typedef NTSTATUS (NTAPI *pNtQueryInformationProcess)(HANDLE, UINT, PVOID, ULONG,
 typedef NTSTATUS (NTAPI *pNtWow64ReadVirtualMemory64)(HANDLE, ULONG64, PVOID, ULONG64, PULONG64);
 typedef NTSTATUS (NTAPI *pNtWow64QueryInformationProcess64)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(x) ((x) >= 0)
+#endif
+
+#ifndef STATUS_INFO_LENGTH_MISMATCH
+#define STATUS_INFO_LENGTH_MISMATCH 0xc0000004
+#endif
+
+#ifndef SystemHandleInformation
+#define SystemHandleInformation 16
+#endif
+
+#ifndef ObjectBasicInformation
+#define ObjectBasicInformation 0
+#endif
+
+#ifndef ObjectNameInformation
+#define ObjectNameInformation 1
+#endif
+
+#ifndef ObjectTypeInformation
+#define ObjectTypeInformation 2
+#endif
+
+typedef struct _SYSTEM_HANDLE {
+    ULONG ProcessId;
+    BYTE  ObjectTypeNumber;
+    BYTE  Flags;
+    USHORT Handle;
+    PVOID Object;
+    ACCESS_MASK GrantedAccess;
+} SYSTEM_HANDLE, *PSYSTEM_HANDLE;
+
+typedef struct _SYSTEM_HANDLE_INFORMATION {
+    ULONG HandleCount;
+    SYSTEM_HANDLE Handles[1];
+} SYSTEM_HANDLE_INFORMATION, *PSYSTEM_HANDLE_INFORMATION;
+
+typedef enum _POOL_TYPE {
+    NonPagedPool,
+    PagedPool,
+    NonPagedPoolMustSucceed,
+    DontUseThisType,
+    NonPagedPoolCacheAligned,
+    PagedPoolCacheAligned,
+    NonPagedPoolCacheAlignedMustS
+} POOL_TYPE, *PPOOL_TYPE;
+
+typedef struct _OBJECT_TYPE_INFORMATION {
+    UNICODE_STRING Name;
+    ULONG TotalNumberOfObjects;
+    ULONG TotalNumberOfHandles;
+    ULONG TotalPagedPoolUsage;
+    ULONG TotalNonPagedPoolUsage;
+    ULONG TotalNamePoolUsage;
+    ULONG TotalHandleTableUsage;
+    ULONG HighWaterNumberOfObjects;
+    ULONG HighWaterNumberOfHandles;
+    ULONG HighWaterPagedPoolUsage;
+    ULONG HighWaterNonPagedPoolUsage;
+    ULONG HighWaterNamePoolUsage;
+    ULONG HighWaterHandleTableUsage;
+    ULONG InvalidAttributes;
+    GENERIC_MAPPING GenericMapping;
+    ULONG ValidAccess;
+    BOOLEAN SecurityRequired;
+    BOOLEAN MaintainHandleCount;
+    USHORT MaintainTypeList;
+    POOL_TYPE PoolType;
+    ULONG PagedPoolUsage;
+    ULONG NonPagedPoolUsage;
+} OBJECT_TYPE_INFORMATION, *POBJECT_TYPE_INFORMATION;
+
 /* 
 
 This is a Windows version of the tool witr, which is a utility for finding details about specific processes.
@@ -1490,7 +1563,11 @@ return WideToString(stringBuffer);
 #endif
 }
 
-void ListProcHandles(HANDLE hproc) {
+PVOID GetLibraryProcAddress(PSTR LibraryName, PSTR ProcName)
+{
+    return GetProcAddress(GetModuleHandleA(LibraryName), ProcName);
+}
+void ListProcHandles(HANDLE hproc, DWORD pid) {
 	// this is so that we can get the handles of a process
 	// the cool thing is, that the original witr doesn't actually display
 	// handles because either the AI that vibe coded didn't know how to get
@@ -1516,23 +1593,13 @@ _NtQuerySystemInformation NtQuerySystemInformation =
     NTSTATUS status;
     PSYSTEM_HANDLE_INFORMATION handleInfo;
     ULONG handleInfoSize = 0x10000;
-    ULONG pid;
-    HANDLE processHandle;
     ULONG i;
 
-    if (argc < 2)
-    {
-        printf("Usage: handles [pid]\n");
-        return 1;
-    }
+    
 
-    pid = _wtoi(argv[1]);
+    
 
-    if (!(processHandle = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid)))
-    {
-        printf("Could not open PID %d! (Don't try to open a system process.)\n", pid);
-        return 1;
-    }
+    
 
     handleInfo = (PSYSTEM_HANDLE_INFORMATION)malloc(handleInfoSize);
 
@@ -1550,7 +1617,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
     if (!NT_SUCCESS(status))
     {
         printf("NtQuerySystemInformation failed!\n");
-        return 1;
+        return;
     }
 
     for (i = 0; i < handleInfo->HandleCount; i++)
@@ -1568,7 +1635,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
 
         /* Duplicate the handle so we can query it. */
         if (!NT_SUCCESS(NtDuplicateObject(
-            processHandle,
+            hproc,
             handle.Handle,
             GetCurrentProcess(),
             &dupHandle,
@@ -1678,7 +1745,6 @@ _NtQuerySystemInformation NtQuerySystemInformation =
     }
 
     free(handleInfo);
-    CloseHandle(processHandle);
 
 }
 
@@ -2120,7 +2186,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
         PrintAncestry(pid);
 
 		FindProcessPorts(pid);
-		ListProcHandles(hProcess);
+		ListProcHandles(hProcess, pid);
 	
 
 		
