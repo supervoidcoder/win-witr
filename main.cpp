@@ -1563,10 +1563,15 @@ return WideToString(stringBuffer);
 #endif
 }
 
-PVOID GetLibraryProcAddress(PSTR LibraryName, PSTR ProcName)
-{
-    return GetProcAddress(GetModuleHandleA(LibraryName), ProcName);
+PVOID GetLibraryProcAddress(const char* LibraryName, const char* ProcName) {
+    HMODULE hMod = GetModuleHandleA(LibraryName);
+    if (!hMod) {
+        hMod = LoadLibraryA(LibraryName);
+        if (!hMod) return nullptr;
+    }
+    return (PVOID)GetProcAddress(hMod, ProcName);
 }
+
 void ListProcHandles(HANDLE hproc, DWORD pid) {
 	// this is so that we can get the handles of a process
 	// the cool thing is, that the original witr doesn't actually display
