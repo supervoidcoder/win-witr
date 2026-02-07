@@ -1587,13 +1587,6 @@ return WideToString(stringBuffer);
     }
 #endif
 }
-_NtQuerySystemInformation NtQuerySystemInformation = 
-    (_NtQuerySystemInformation)GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
-_NtDuplicateObject NtDuplicateObject =
-    (_NtDuplicateObject)GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
-_NtQueryObject NtQueryObject =
-    (_NtQueryObject)GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
-
 PVOID GetLibraryProcAddress(const char* LibraryName, const char* ProcName) {
     HMODULE hMod = GetModuleHandleA(LibraryName);
     if (!hMod) {
@@ -1602,6 +1595,15 @@ PVOID GetLibraryProcAddress(const char* LibraryName, const char* ProcName) {
     }
     return (PVOID)GetProcAddress(hMod, ProcName);
 }
+
+_NtQuerySystemInformation pfnNtQuerySystemInformation = 
+    (_NtQuerySystemInformation)GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
+_NtDuplicateObject pfnNtDuplicateObject =
+    (_NtDuplicateObject)GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
+_NtQueryObject pfnNtQueryObject =
+    (_NtQueryObject)GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
+
+
 
 void ListProcHandles(HANDLE hproc, DWORD pid) {
 	// this is so that we can get the handles of a process
@@ -1620,12 +1622,12 @@ void ListProcHandles(HANDLE hproc, DWORD pid) {
 // some weird obscure thing that you're sure nobody has done before, the most likely thing
 // is that the same weird obscure thing has been done before, but it's just really obscure 
 
-_NtQuerySystemInformation NtQuerySystemInformation = 
-        GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
-    _NtDuplicateObject NtDuplicateObject =
-        GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
-    _NtQueryObject NtQueryObject =
-        GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
+_NtQuerySystemInformation pfnNtQuerySystemInformation = 
+    (_NtQuerySystemInformation)GetLibraryProcAddress("ntdll.dll", "NtQuerySystemInformation");
+_NtDuplicateObject pfnNtDuplicateObject =
+    (_NtDuplicateObject)GetLibraryProcAddress("ntdll.dll", "NtDuplicateObject");
+_NtQueryObject pfnNtQueryObject =
+    (_NtQueryObject)GetLibraryProcAddress("ntdll.dll", "NtQueryObject");
     NTSTATUS status;
     PSYSTEM_HANDLE_INFORMATION handleInfo;
     ULONG handleInfoSize = 0x10000;
@@ -1641,7 +1643,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
 
     /* NtQuerySystemInformation won't give us the correct buffer size, 
        so we guess by doubling the buffer size. */
-    while ((status = NtQuerySystemInformation(
+    while ((status = pfnNtQuerySystemInformation(
         (SYSTEM_INFORMATION_CLASS)SystemHandleInformation,
         handleInfo,
         handleInfoSize,
@@ -1670,9 +1672,9 @@ _NtQuerySystemInformation NtQuerySystemInformation =
             continue;
 
         /* Duplicate the handle so we can query it. */
-        if (!NT_SUCCESS(NtDuplicateObject(
+        if (!NT_SUCCESS(pfnNtDuplicateObject(
             hproc,
-            handle.Handle,
+            (HANDLE)(ULONG_PTR)handle.Handle,
             GetCurrentProcess(),
             &dupHandle,
             0,
@@ -1686,7 +1688,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
 
         /* Query the object type. */
         objectTypeInfo = (POBJECT_TYPE_INFORMATION)malloc(0x1000);
-        if (!NT_SUCCESS(NtQueryObject(
+        if (!NT_SUCCESS(pfnNtQueryObject(
             dupHandle,
             (OBJECT_INFORMATION_CLASS)ObjectTypeInformation,
             objectTypeInfo,
@@ -1716,7 +1718,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
         }
 
         objectNameInfo = malloc(0x1000);
-        if (!NT_SUCCESS(NtQueryObject(
+        if (!NT_SUCCESS(pfnNtQueryObject(
             dupHandle,
             (OBJECT_INFORMATION_CLASS)ObjectNameInformation,
             objectNameInfo,
@@ -1726,7 +1728,7 @@ _NtQuerySystemInformation NtQuerySystemInformation =
         {
             /* Reallocate the buffer and try again. */
             objectNameInfo = realloc(objectNameInfo, returnLength);
-            if (!NT_SUCCESS(NtQueryObject(
+            if (!NT_SUCCESS(pfnNtQueryObject(
                 dupHandle,
                 (OBJECT_INFORMATION_CLASS)ObjectNameInformation,
                 objectNameInfo,
