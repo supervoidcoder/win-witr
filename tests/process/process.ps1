@@ -24,23 +24,7 @@ Measure-Command { win-witr spoolsv.exe | Out-Default}
 Measure-Command { win-witr taskhostw.exe | Out-Default}
 Measure-Command { win-witr dllhost.exe | Out-Default}
 
-start /B notepad.exe
-timeout /t 1 /nobreak >nul
-Measure-Command { win-witr notepad.exe | Out-Default}
-taskkill /F /IM notepad.exe >nul 2>&1
-
-start /B calc.exe
-timeout /t 1 /nobreak >nul
-Measure-Command { win-witr calc.exe | Out-Default}
-taskkill /F /IM calc.exe >nul 2>&1
-
-
-start /B mspaint.exe
-timeout /t 1 /nobreak >nul
-Measure-Command { win-witr mspaint.exe | Out-Default}
-taskkill /F /IM mspaint.exe >nul 2>&1
-
-
 Measure-Command { win-witr powershell.exe | Out-Default}
+
 
 
