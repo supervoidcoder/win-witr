@@ -43,6 +43,7 @@ jobs:
       # Install m-de-graaff's witr-win (Rust version)
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        # Note: Using @stable intentionally to test against latest Rust version
 
       - name: Clone and build m-de-graaff's witr-win
         shell: pwsh
