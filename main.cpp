@@ -2137,7 +2137,7 @@ int main(int argc, char* argv[]) {
 				 // snapshot of all processes in the system first so we can pass it to every function from there on
 			
 			  HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-			  if (INVALID_HANDLE_VALUE == hSnapshot) {return {}};
+			  if (INVALID_HANDLE_VALUE == hshot) {return {};}
                 PIDinspect(pids, trash, hshot);
 				CloseHandle(hshot);
             } else {
@@ -2158,7 +2158,7 @@ int main(int argc, char* argv[]) {
         else if (arg[0] != '-') { // if it doesn't start with -- or -
             std::string procName = arg;
 			HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-			  if (INVALID_HANDLE_VALUE == hSnapshot) {return {}};
+			  if (INVALID_HANDLE_VALUE == hshot) {return {};}
             ProcInfos r = findMyProc(procName.c_str(), hshot);
             if (!r.pids.empty()) {
                 std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
