@@ -1727,7 +1727,7 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids, std::vector<std::string> names) { // ooh guys look i'm in the void
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names) { // ooh guys look i'm in the void
     DWORD pid = pids[0];
 	std::string procName = GetProcessNameFromPid(pid);
 	if (IsVirtualTerminalModeEnabled()) {
