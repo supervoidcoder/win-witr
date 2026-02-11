@@ -2010,10 +2010,8 @@ ProcInfos findMyProc(const char *procname) {
   // retrieve information about the processes
   // and exit if unsuccessful
 	// if we find the process: return process ID
-	std::string exeName = WideToString(pe.szExeFile);
-	std::transform(exeName.begin(), exeName.end(), exeName.begin(), [](unsigned char c){ return std::tolower(c); });
-	  // for the comparison make it lowercase so that it does the thingy mammombbers insensitiviityness case
-	  // this is only for the compariason either way
+	
+	  
 	  std::transform(procstr.begin(), procstr.end(), procstr.begin(), [](unsigned char c){ return std::tolower(c); });// same lowercasing as the otther
 	  std::string ex = procstr;
 	  if (!procstr.ends_with(".exe")) {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
@@ -2022,8 +2020,10 @@ ProcInfos findMyProc(const char *procname) {
   while (hResult) {
     
 	  
-	  
-			
+	  std::string exeName = WideToString(pe.szExeFile);
+	std::transform(exeName.begin(), exeName.end(), exeName.begin(), [](unsigned char c){ return std::tolower(c); });
+	  // for the comparison make it lowercase so that it does the thingy mammombbers insensitiviityness case
+			// this is only for the compariason either way
 		  
 	  
     if (exeName == ex || exeName == procstr) { 
