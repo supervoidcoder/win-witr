@@ -2125,10 +2125,10 @@ int main(int argc, char* argv[]) {
 
                 std::vector<int> pids;
 				std::vector<std::string> trash;
-				trash.push_back(""):
-				pids.push_back(pid, trash); // function requires it to be a list even if only 1 is passed
+				trash.push_back("");
+				pids.push_back(static_cast<DWORD>(pid));// function requires it to be a list even if only 1 is passed
 				
-                PIDinspect({static_cast<DWORD>(pids)});
+                PIDinspect({static_cast<DWORD>(pids)}, trash);
             } else {
                 if (IsVirtualTerminalModeEnabled()) { // ugh i have to do this EVERY SINGLE TIME
                     std::cerr << "\033[1;31mError:\033[0m --pid option requires an argument." << std::endl;
