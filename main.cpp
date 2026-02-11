@@ -1727,7 +1727,7 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids) { // ooh guys look i'm in the void
+void PIDinspect(const std::vector<DWORD>& pids, std::vector<std::string> names) { // ooh guys look i'm in the void
     DWORD pid = pids[0];
 	std::string procName = GetProcessNameFromPid(pid);
 	if (IsVirtualTerminalModeEnabled()) {
@@ -1947,7 +1947,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
             }
             
             for (size_t i = 1; i < pids.size(); i++) {
-                std::string relatedProcName = GetProcessNameFromPid(pids[i]);
+                std::string relatedProcName = names[i];
                 if (IsVirtualTerminalModeEnabled()) {
                     std::cout << "\t\033[36m" << relatedProcName << "\033[90m (PID " << pids[i] << ")\033[0m\n";
                 } else {
@@ -1984,11 +1984,16 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
     
 }
 
-std::vector<int> findMyProc(const char *procname) {
+struct ProcInfos {
+    std::vector<std::string> names;
+    std::vector<int>         pids;
+}
+
+std::vector<std::vector<std::string>, std::vector<int>> findMyProc(const char *procname) {
 
   HANDLE hSnapshot;
   PROCESSENTRY32 pe;
-  std::vector<int> pids;
+  ProcResult result
   BOOL hResult;
   
 
@@ -2007,14 +2012,20 @@ std::vector<int> findMyProc(const char *procname) {
   while (hResult) {
     // if we find the process: return process ID
     if (strcmp(procname, WideToString(pe.szExeFile).c_str()) == 0) { 
-      pids.push_back(pe.th32ProcessID);
+	  result.names.push_back(pe.szExeFile); // let me cook
+		// while you might think its less performant to waste all this
+		// on storing related names for no reason
+		// its crucial for the related processes since
+		// otherwise we'd have to call the get process name for every related process
+		// and slow us down significantly so storing it on the fly is better
+      result.pids.push_back(pe.th32ProcessID);
     }
     hResult = Process32Next(hSnapshot, &pe);
   }
 
   // closes an open handle (CreateToolhelp32Snapshot)
   CloseHandle(hSnapshot);
-  return pids;
+  return pids, names;
 }
 // The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html , modified simply to use WideToString for the process name comparison among other things.
 // Thanks!
@@ -2112,8 +2123,10 @@ int main(int argc, char* argv[]) {
                 }
                 
 
-                
-                PIDinspect({static_cast<DWORD>(pid)});
+                std::vector<int> pids;
+				pids.push_back(pid); // function requires it to be a list even if only 1 is passed
+				
+                PIDinspect({static_cast<DWORD>(pids)});
             } else {
                 if (IsVirtualTerminalModeEnabled()) { // ugh i have to do this EVERY SINGLE TIME
                     std::cerr << "\033[1;31mError:\033[0m --pid option requires an argument." << std::endl;
@@ -2131,10 +2144,10 @@ int main(int argc, char* argv[]) {
         // check for process name if no recognized flags
         else if (arg[0] != '-') { // if it doesn't start with -- or -
             std::string procName = arg;
-            std::vector<int> pids = findMyProc(procName.c_str());
-            if (!pids.empty()) {
-                std::vector<DWORD> dwPids(pids.begin(), pids.end());
-                PIDinspect(dwPids);
+            ProcResult r = findMyProc(procName.c_str());
+            if (!r.pids.empty()) {
+                std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
+                PIDinspect(dwPids, r.names);
             } else {
                 if (IsVirtualTerminalModeEnabled()) {
                     std::cerr << "\033[1;31mError:\033[0m Could not find process with name " << procName << "." << std::endl;
