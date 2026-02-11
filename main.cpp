@@ -1486,7 +1486,7 @@ return WideToString(stringBuffer);
 #endif
 }
 
-void PrintAncestry(DWORD pid, hSnapshot) {
+void PrintAncestry(DWORD pid, HANDLE hSnapshot) {
 	// now we're geting the name
 // we're making it slower by adding a bunch of snapshots 
 // but again, we'll optimize and refactor later, i need this to work first
