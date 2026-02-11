@@ -1993,7 +1993,7 @@ ProcInfos findMyProc(const char *procname) {
 
   HANDLE hSnapshot;
   PROCESSENTRY32 pe;
-  ProcResult result;
+  ProcInfos result;
   BOOL hResult;
   
 
