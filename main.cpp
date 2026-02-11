@@ -2011,14 +2011,12 @@ ProcInfos findMyProc(const char *procname) {
   // and exit if unsuccessful
 	// if we find the process: return process ID
 	std::string exeName = WideToString(pe.szExeFile);
-	std::transform(exeName.begin(), exeName.end(), exeName.begin(), 
-                   [](unsigned char c){ return std::tolower(c); });
+	std::transform(exeName.begin(), exeName.end(), exeName.begin(), [](unsigned char c){ return std::tolower(c); });
 	  // for the comparison make it lowercase so that it does the thingy mammombbers insensitiviityness case
 	  // this is only for the compariason either way
-	  std::transform(procname.begin(), procname.end(), procname.begin(), 
-                   [](unsigned char c){ return std::tolower(c); });// same lowercasing as the otther
+	  std::transform(procname.begin(), procname.end(), procname.begin(), [](unsigned char c){ return std::tolower(c); });// same lowercasing as the otther
 	  std::string ex = procname;
-	  if (!exeName.ends_with(".exe") {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
+	  if (!exeName.ends_with(".exe")) {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
 		  ex += ".exe";
 	  }
   while (hResult) {
