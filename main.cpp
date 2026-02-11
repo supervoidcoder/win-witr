@@ -275,6 +275,11 @@ ULONGLONG GetProcessCreationTime(DWORD pid) {
     CloseHandle(hProcess);
     return 0;
 }
+
+ULONGLONG GetProcessCreationTime(DWORD pid, const std::unordered_map<DWORD, PROCESSENTRY32>& pidMap) {
+    if (!pidMap.empty() && pidMap.find(pid) == pidMap.end()) return 0;
+    return GetProcessCreationTime(pid);
+}
 // Process uptime helper
 // Reference: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes
 // While this does indeed give you the time since the process was created,
@@ -308,6 +313,27 @@ std::string GetReadableFileTime(DWORD pid) {
     // All this shenanginanny stuff we do with the timestamp is to make it look just like witr's output, which I quote from the README in that repo:
     // Started     : 2 days ago (Mon 2025-02-02 11:42:10 +05:30)
 
+    return oss.str();
+}
+
+std::string GetReadableFileTime(DWORD pid, const std::unordered_map<DWORD, PROCESSENTRY32>& pidMap) {
+    ULONGLONG creationTime = GetProcessCreationTime(pid, pidMap);
+    if (creationTime == 0) return "N/A";
+    time_t unixTime = windows_time_to_unix_epoch(creationTime);
+    time_t now = std::time(nullptr);
+    double diffSeconds = std::difftime(now, unixTime);
+
+    std::string ago;
+    if (diffSeconds < 60) ago = std::to_string((int)diffSeconds) + " seconds ago";
+    else if (diffSeconds < 3600) ago = std::to_string((int)diffSeconds / 60) + " minutes ago";
+    else if (diffSeconds < 86400) ago = std::to_string((int)diffSeconds / 3600) + " hours ago";
+    else ago = std::to_string((int)diffSeconds / 86400) + " days ago";
+
+    std::tm bt{};
+    localtime_s(&bt, &unixTime);
+
+    std::ostringstream oss;
+    oss << ago << " (" << std::put_time(&bt, "%a %Y-%m-%d %H:%M:%S %z") << ")";
     return oss.str();
 }
 
@@ -1487,7 +1513,7 @@ return WideToString(stringBuffer);
 #endif
 }
 
-void PrintAncestry(DWORD pid, HANDLE hSnapshot) {
+void PrintAncestry(DWORD pid, HANDLE hSnapshot, const std::unordered_map<DWORD, PROCESSENTRY32>& pidMap) {
 	// now we're geting the name
 // we're making it slower by adding a bunch of snapshots 
 // but again, we'll optimize and refactor later, i need this to work first
@@ -1506,14 +1532,18 @@ UPDATE: This is done now!!
     
     
     // Build a PID→process map ONCE instead of walking 3 times
-    std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
+    std::unordered_map<DWORD, PROCESSENTRY32> localPidMap;
+    const std::unordered_map<DWORD, PROCESSENTRY32>* pidMapPtr = &pidMap;
     PROCESSENTRY32 pe32{};
     pe32.dwSize = sizeof(PROCESSENTRY32);
-    
-    if (Process32First(hSnapshot, &pe32)) {
-        do {
-            pidMap.emplace(pe32.th32ProcessID, pe32);
-        } while (Process32Next(hSnapshot, &pe32));
+
+    if (pidMapPtr->empty()) {
+        if (Process32First(hSnapshot, &pe32)) {
+            do {
+                localPidMap.emplace(pe32.th32ProcessID, pe32);
+            } while (Process32Next(hSnapshot, &pe32));
+        }
+        pidMapPtr = &localPidMap;
     }
 
     DWORD parentPid = 0;
@@ -1526,8 +1556,8 @@ UPDATE: This is done now!!
     // here, we're gonna use the existing snapshot so it doesn't use another
     // it shouldn't harm performance, but even if it does, I want to get 
     // the features done first before optimizing anything
-    auto currentIt = pidMap.find(currentProcessId);
-    if (currentIt != pidMap.end()) {
+    auto currentIt = pidMapPtr->find(currentProcessId);
+    if (currentIt != pidMapPtr->end()) {
         pe32 = currentIt->second;
     }
     
@@ -1537,12 +1567,12 @@ UPDATE: This is done now!!
     std::vector<std::string> exeNames; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
     std::vector<DWORD> pidNames;     // hopefully the compiler can fix it
     std::vector<DWORD> parentPids;
-	ULONGLONG creationTime = GetProcessCreationTime(pid);
+	ULONGLONG creationTime = GetProcessCreationTime(pid, *pidMapPtr);
     bool found = false;
     while (pid != 0 && pid != 4) {
     found = false; 
-    auto it = pidMap.find(pid);
-    if (it != pidMap.end()) {
+    auto it = pidMapPtr->find(pid);
+    if (it != pidMapPtr->end()) {
         const PROCESSENTRY32& entry = it->second;
         // Without comments, this literally looks like alien gibberish so lemme explain
       	
@@ -1552,7 +1582,7 @@ UPDATE: This is done now!!
         
         parentPid = entry.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
         parentPids.emplace_back(entry.th32ParentProcessID); // adds above to list
-		ULONGLONG parentTime = GetProcessCreationTime(entry.th32ParentProcessID);
+    	ULONGLONG parentTime = GetProcessCreationTime(entry.th32ParentProcessID, *pidMapPtr);
 
         if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
             // we can't be sure if the parent actually exists and windows isn't lying to us,
@@ -1579,7 +1609,7 @@ UPDATE: This is done now!!
     std::reverse(pidNames.begin(), pidNames.end());  
     std::reverse(parentPids.begin(), parentPids.end());  
     int children = 0; // i wonder what would happen if you could set an emoji as var name
-    for (const auto& pair : pidMap) {
+    for (const auto& pair : *pidMapPtr) {
         const PROCESSENTRY32& entry = pair.second;
             
                // this time, our target pid is already stored at the very top of our list.
@@ -1717,6 +1747,14 @@ void FindProcessPorts(DWORD targetPid) {
 
 void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot) { // ooh guys look i'm in the void
     DWORD pid = pids[0];
+    std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
+    PROCESSENTRY32 pe32{};
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+    if (Process32First(hshot, &pe32)) {
+        do {
+            pidMap.emplace(pe32.th32ProcessID, pe32);
+        } while (Process32Next(hshot, &pe32));
+    }
 	std::string procName = GetProcessNameFromPid(pid, hshot);
 	if (virtualTerminalEnabled) {
 		if (procName == ""){
@@ -1913,7 +1951,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
         } else {
             std::cout << "\nWhy It Exists:\n";
         }
-        PrintAncestry(pid, hshot);
+        PrintAncestry(pid, hshot, pidMap);
 
 		FindProcessPorts(pid);
 	
@@ -1922,9 +1960,9 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
 		
 
         if (virtualTerminalEnabled) {
-            std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid) << std::endl;
+            std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid, pidMap) << std::endl;
         } else {
-            std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl;
+            std::cout << "\nStarted: " << GetReadableFileTime(pid, pidMap) << std::endl;
         }
 
         if (pids.size() > 1) {
