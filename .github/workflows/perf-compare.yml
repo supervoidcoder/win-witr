@@ -120,24 +120,24 @@ jobs:
           Write-Host "Testing process lookup performance on $($testProcesses.Count) processes" -ForegroundColor Yellow
           Write-Host ""
           
-          # First, show sample output from each tool for explorer process
+          # First, show sample output from each tool for svchost process
           Write-Host "=====================================" -ForegroundColor Cyan
-          Write-Host "SAMPLE OUTPUT COMPARISON (explorer)" -ForegroundColor Cyan
+          Write-Host "SAMPLE OUTPUT COMPARISON (svchost)" -ForegroundColor Cyan
           Write-Host "=====================================" -ForegroundColor Cyan
           Write-Host ""
           
           Write-Host "--- Go version output ---" -ForegroundColor Green
-          & $witrGo explorer
+          & $witrGo svchost
           Write-Host ""
           
           if ($hasRust) {
             Write-Host "--- Rust version output ---" -ForegroundColor Green
-            & $witrRust explorer
+            & $witrRust svchost
             Write-Host ""
           }
           
           Write-Host "--- C++ version output ---" -ForegroundColor Green
-          & $witrCpp explorer
+          & $witrCpp svchost
           Write-Host ""
           Write-Host ""
           
