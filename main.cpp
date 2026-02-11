@@ -2016,7 +2016,7 @@ ProcInfos findMyProc(const char *procname) {
 	  // this is only for the compariason either way
 	  std::transform(procstr.begin(), procstr.end(), procstr.begin(), [](unsigned char c){ return std::tolower(c); });// same lowercasing as the otther
 	  std::string ex = procstr;
-	  if (!exeName.ends_with(".exe")) {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
+	  if (!procstr.ends_with(".exe")) {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
 		  ex += ".exe";
 	  }
   while (hResult) {
