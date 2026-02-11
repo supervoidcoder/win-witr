@@ -1589,7 +1589,7 @@ UPDATE: This is done now!!
 
                 if (entry.th32ParentProcessID == targetpid) {
                     exeName = WideToString(entry.szExeFile); // this stores the name of our pid we're looking at in a var
-                    exeNames.emplace_back(exeName); =
+                    exeNames.emplace_back(exeName); 
                     pidNames.emplace_back(entry.th32ProcessID);
                     parentPids.emplace_back(entry.th32ProcessID); // just fill it up, we aren't using it
                     children++; // keeps track of how many children we have (that sounds wrong when you say it)
