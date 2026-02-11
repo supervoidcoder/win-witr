@@ -46,16 +46,27 @@ jobs:
         # Note: Using @stable intentionally to test against latest Rust version
 
       - name: Clone and build m-de-graaff's witr-win
+        continue-on-error: true
+        id: rust_build
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
+          $ErrorActionPreference = "Continue"
           git clone https://github.com/m-de-graaff/witr-win.git witr-rust
           cd witr-rust
-          cargo build --release
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          Copy-Item "target/release/witr.exe" "witr-rust.exe"
-          Write-Host "Built m-de-graaff's witr-win (Rust version)"
-          .\witr-rust.exe --version
+          cargo build --release 2>&1 | Out-Host
+          if ($LASTEXITCODE -ne 0) { 
+            Write-Warning "Rust version failed to build - will be skipped in comparison"
+            exit 1
+          }
+          # The binary name is witr-win.exe, not witr.exe
+          if (Test-Path "target/release/witr-win.exe") {
+            Copy-Item "target/release/witr-win.exe" "../witr-rust.exe"
+            Write-Host "Built m-de-graaff's witr-win (Rust version)"
+            ..\witr-rust.exe --version
+          } else {
+            Write-Warning "Rust binary not found - build may have failed"
+            exit 1
+          }
 
       # Build this repo's win-witr (C++ version)
       - name: Setup MSVC
@@ -86,6 +97,13 @@ jobs:
           $witrRust = "$PWD\witr-rust.exe"
           $witrCpp = "$PWD\win-witr-cpp\win-witr.exe"
           
+          # Check which versions are available
+          $hasRust = Test-Path $witrRust
+          if (-not $hasRust) {
+            Write-Warning "Rust version not available - it failed to build. Comparison will only include Go and C++ versions."
+            Write-Host ""
+          }
+          
           # Test processes - use common Windows processes that should exist
           $testProcesses = @(
             "explorer",
@@ -109,9 +127,11 @@ jobs:
           & $witrGo explorer
           Write-Host ""
           
-          Write-Host "--- Rust version output ---" -ForegroundColor Green
-          & $witrRust explorer
-          Write-Host ""
+          if ($hasRust) {
+            Write-Host "--- Rust version output ---" -ForegroundColor Green
+            & $witrRust explorer
+            Write-Host ""
+          }
           
           Write-Host "--- C++ version output ---" -ForegroundColor Green
           & $witrCpp explorer
@@ -137,12 +157,14 @@ jobs:
             Write-Host " $goMs ms" -ForegroundColor Cyan
             $results["Go"] += $goMs
             
-            # Test Rust version
-            Write-Host "  Rust version:" -ForegroundColor Green -NoNewline
-            $rustTime = Measure-Command { & $witrRust $process 2>&1 | Out-Null }
-            $rustMs = [Math]::Round($rustTime.TotalMilliseconds, 2)
-            Write-Host " $rustMs ms" -ForegroundColor Cyan
-            $results["Rust"] += $rustMs
+            # Test Rust version (if available)
+            if ($hasRust) {
+              Write-Host "  Rust version:" -ForegroundColor Green -NoNewline
+              $rustTime = Measure-Command { & $witrRust $process 2>&1 | Out-Null }
+              $rustMs = [Math]::Round($rustTime.TotalMilliseconds, 2)
+              Write-Host " $rustMs ms" -ForegroundColor Cyan
+              $results["Rust"] += $rustMs
+            }
             
             # Test C++ version
             Write-Host "  C++ version:" -ForegroundColor Green -NoNewline
@@ -161,32 +183,40 @@ jobs:
           Write-Host "=====================================" -ForegroundColor Cyan
           
           $goTotal = ($results["Go"] | Measure-Object -Sum).Sum
-          $rustTotal = ($results["Rust"] | Measure-Object -Sum).Sum
+          $rustTotal = if ($hasRust) { ($results["Rust"] | Measure-Object -Sum).Sum } else { 0 }
           $cppTotal = ($results["C++"] | Measure-Object -Sum).Sum
           
           Write-Host ""
           Write-Host "Total time for $($testProcesses.Count) process lookups:" -ForegroundColor Yellow
-          Write-Host "  Go (pranshuparmar/witr):      $([Math]::Round($goTotal, 2)) ms" -ForegroundColor Green
-          Write-Host "  Rust (m-de-graaff/witr-win):  $([Math]::Round($rustTotal, 2)) ms" -ForegroundColor Green
+          Write-Host "  Go (pranshuparmar/witr):       $([Math]::Round($goTotal, 2)) ms" -ForegroundColor Green
+          if ($hasRust) {
+            Write-Host "  Rust (m-de-graaff/witr-win):   $([Math]::Round($rustTotal, 2)) ms" -ForegroundColor Green
+          } else {
+            Write-Host "  Rust (m-de-graaff/witr-win):   N/A (build failed)" -ForegroundColor Yellow
+          }
           Write-Host "  C++ (supervoidcoder/win-witr): $([Math]::Round($cppTotal, 2)) ms" -ForegroundColor Green
           Write-Host ""
           
           # Calculate averages
           $goAvg = [Math]::Round($goTotal / $testProcesses.Count, 2)
-          $rustAvg = [Math]::Round($rustTotal / $testProcesses.Count, 2)
+          $rustAvg = if ($hasRust) { [Math]::Round($rustTotal / $testProcesses.Count, 2) } else { 0 }
           $cppAvg = [Math]::Round($cppTotal / $testProcesses.Count, 2)
           
           Write-Host "Average time per lookup:" -ForegroundColor Yellow
           Write-Host "  Go:   $goAvg ms" -ForegroundColor Green
-          Write-Host "  Rust: $rustAvg ms" -ForegroundColor Green
+          if ($hasRust) {
+            Write-Host "  Rust: $rustAvg ms" -ForegroundColor Green
+          }
           Write-Host "  C++:  $cppAvg ms" -ForegroundColor Green
           Write-Host ""
           
           # Determine winner
           $times = @{
             "Go (pranshuparmar/witr)" = $goTotal
-            "Rust (m-de-graaff/witr-win)" = $rustTotal
             "C++ (supervoidcoder/win-witr)" = $cppTotal
+          }
+          if ($hasRust) {
+            $times["Rust (m-de-graaff/witr-win)"] = $rustTotal
           }
           
           $winner = $times.GetEnumerator() | Sort-Object Value | Select-Object -First 1
@@ -200,7 +230,6 @@ jobs:
           
           # Calculate speed differences
           $cppVsGo = [Math]::Round((($goTotal - $cppTotal) / $goTotal) * 100, 1)
-          $cppVsRust = [Math]::Round((($rustTotal - $cppTotal) / $rustTotal) * 100, 1)
           
           Write-Host "Performance comparison:" -ForegroundColor Yellow
           if ($cppVsGo -gt 0) {
@@ -211,12 +240,15 @@ jobs:
             Write-Host "  C++ and Go have equal performance" -ForegroundColor Yellow
           }
           
-          if ($cppVsRust -gt 0) {
-            Write-Host "  C++ is $cppVsRust% faster than Rust" -ForegroundColor Green
-          } elseif ($cppVsRust -lt 0) {
-            Write-Host "  C++ is $([Math]::Abs($cppVsRust))% slower than Rust" -ForegroundColor Red
-          } else {
-            Write-Host "  C++ and Rust have equal performance" -ForegroundColor Yellow
+          if ($hasRust) {
+            $cppVsRust = [Math]::Round((($rustTotal - $cppTotal) / $rustTotal) * 100, 1)
+            if ($cppVsRust -gt 0) {
+              Write-Host "  C++ is $cppVsRust% faster than Rust" -ForegroundColor Green
+            } elseif ($cppVsRust -lt 0) {
+              Write-Host "  C++ is $([Math]::Abs($cppVsRust))% slower than Rust" -ForegroundColor Red
+            } else {
+              Write-Host "  C++ and Rust have equal performance" -ForegroundColor Yellow
+            }
           }
           Write-Host ""
           
@@ -232,8 +264,10 @@ jobs:
           $goVersionTime = Measure-Command { & $witrGo --version | Out-Null }
           Write-Host "  Go:   $([Math]::Round($goVersionTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
           
-          $rustVersionTime = Measure-Command { & $witrRust --version | Out-Null }
-          Write-Host "  Rust: $([Math]::Round($rustVersionTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          if ($hasRust) {
+            $rustVersionTime = Measure-Command { & $witrRust --version | Out-Null }
+            Write-Host "  Rust: $([Math]::Round($rustVersionTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          }
           
           $cppVersionTime = Measure-Command { & $witrCpp --version | Out-Null }
           Write-Host "  C++:  $([Math]::Round($cppVersionTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
@@ -245,8 +279,10 @@ jobs:
           $goHelpTime = Measure-Command { & $witrGo --help | Out-Null }
           Write-Host "  Go:   $([Math]::Round($goHelpTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
           
-          $rustHelpTime = Measure-Command { & $witrRust --help | Out-Null }
-          Write-Host "  Rust: $([Math]::Round($rustHelpTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          if ($hasRust) {
+            $rustHelpTime = Measure-Command { & $witrRust --help | Out-Null }
+            Write-Host "  Rust: $([Math]::Round($rustHelpTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          }
           
           $cppHelpTime = Measure-Command { & $witrCpp --help | Out-Null }
           Write-Host "  C++:  $([Math]::Round($cppHelpTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
