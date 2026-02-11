@@ -1727,7 +1727,8 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(DWORD pid) { // ooh guys look i'm in the void
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names) { // ooh guys look i'm in the void
+    DWORD pid = pids[0];
 	std::string procName = GetProcessNameFromPid(pid);
 	if (IsVirtualTerminalModeEnabled()) {
 		if (procName == ""){
@@ -1937,6 +1938,24 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
         } else {
             std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl;
         }
+
+        if (pids.size() > 1) {
+            if (IsVirtualTerminalModeEnabled()) {
+                std::cout << "\033[1;35mRelated Processes:\033[0m\n";
+            } else {
+                std::cout << "Related Processes:\n";
+            }
+            
+            for (size_t i = 1; i < pids.size(); i++) {
+                std::string relatedProcName = names[i];
+                if (IsVirtualTerminalModeEnabled()) {
+                    std::cout << "\t\033[36m" << relatedProcName << "\033[90m (PID " << pids[i] << ")\033[0m\n";
+                } else {
+                    std::cout << "\t" << relatedProcName << " (PID " << pids[i] << ")\n";
+                }
+                
+            }
+        }
     /*
     TODO: 
     This definitely needs a lot more details to be complete like witr. Unfortunately, windows needs even more shenanigans and a whole
@@ -1962,18 +1981,25 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
     */
 
     CloseHandle(hProcess);
+    
 }
 
-int findMyProc(const char *procname) {
+struct ProcInfos {
+    std::vector<std::string> names;
+    std::vector<int>         pids;
+};
+
+ProcInfos findMyProc(const char *procname) {
 
   HANDLE hSnapshot;
   PROCESSENTRY32 pe;
-  int pid = 0;
+  ProcInfos result;
   BOOL hResult;
+  
 
   // snapshot of all processes in the system
   hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-  if (INVALID_HANDLE_VALUE == hSnapshot) return 0;
+  if (INVALID_HANDLE_VALUE == hSnapshot) return {};
 
   // initializing size: needed for using Process32First
   pe.dwSize = sizeof(PROCESSENTRY32);
@@ -1986,15 +2012,20 @@ int findMyProc(const char *procname) {
   while (hResult) {
     // if we find the process: return process ID
     if (strcmp(procname, WideToString(pe.szExeFile).c_str()) == 0) { 
-      pid = pe.th32ProcessID;
-      break;
+	  result.names.push_back(WideToString(pe.szExeFile)); // let me cook
+		// while you might think its less performant to waste all this
+		// on storing related names for no reason
+		// its crucial for the related processes since
+		// otherwise we'd have to call the get process name for every related process
+		// and slow us down significantly so storing it on the fly is better
+      result.pids.push_back(pe.th32ProcessID);
     }
     hResult = Process32Next(hSnapshot, &pe);
   }
 
   // closes an open handle (CreateToolhelp32Snapshot)
   CloseHandle(hSnapshot);
-  return pid;
+  return result;
 }
 // The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html , modified simply to use WideToString for the process name comparison among other things.
 // Thanks!
@@ -2092,8 +2123,12 @@ int main(int argc, char* argv[]) {
                 }
                 
 
-                
-                PIDinspect(static_cast<DWORD>(pid));
+                std::vector<DWORD> pids;
+				std::vector<std::string> trash;
+				trash.push_back("");
+				pids.push_back(static_cast<DWORD>(pid));// function requires it to be a list even if only 1 is passed
+				
+                PIDinspect(pids, trash);
             } else {
                 if (IsVirtualTerminalModeEnabled()) { // ugh i have to do this EVERY SINGLE TIME
                     std::cerr << "\033[1;31mError:\033[0m --pid option requires an argument." << std::endl;
@@ -2111,10 +2146,10 @@ int main(int argc, char* argv[]) {
         // check for process name if no recognized flags
         else if (arg[0] != '-') { // if it doesn't start with -- or -
             std::string procName = arg;
-            int pid = findMyProc(procName.c_str());
-            if (pid != 0) {
-                
-                PIDinspect(static_cast<DWORD>(pid));
+            ProcInfos r = findMyProc(procName.c_str());
+            if (!r.pids.empty()) {
+                std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
+                PIDinspect(dwPids, r.names);
             } else {
                 if (IsVirtualTerminalModeEnabled()) {
                     std::cerr << "\033[1;31mError:\033[0m Could not find process with name " << procName << "." << std::endl;
