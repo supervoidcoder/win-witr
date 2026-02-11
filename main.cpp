@@ -2006,7 +2006,7 @@ ProcInfos findMyProc(const char *procname) {
 
   // info about first process encountered in a system snapshot
   hResult = Process32First(hSnapshot, &pe);
-
+  std::string procstr = procname;
   // retrieve information about the processes
   // and exit if unsuccessful
 	// if we find the process: return process ID
@@ -2014,8 +2014,8 @@ ProcInfos findMyProc(const char *procname) {
 	std::transform(exeName.begin(), exeName.end(), exeName.begin(), [](unsigned char c){ return std::tolower(c); });
 	  // for the comparison make it lowercase so that it does the thingy mammombbers insensitiviityness case
 	  // this is only for the compariason either way
-	  std::transform(procname.begin(), procname.end(), procname.begin(), [](unsigned char c){ return std::tolower(c); });// same lowercasing as the otther
-	  std::string ex = procname;
+	  std::transform(procstr.begin(), procstr.end(), procstr.begin(), [](unsigned char c){ return std::tolower(c); });// same lowercasing as the otther
+	  std::string ex = procstr;
 	  if (!exeName.ends_with(".exe")) {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
 		  ex += ".exe";
 	  }
@@ -2026,7 +2026,7 @@ ProcInfos findMyProc(const char *procname) {
 			
 		  
 	  
-    if (exeName == ex || exeName == procname) { 
+    if (exeName == ex || exeName == procstr) { 
 	  result.names.push_back(WideToString(pe.szExeFile)); // let me cook
 		// while you might think its less performant to waste all this
 		// on storing related names for no reason
