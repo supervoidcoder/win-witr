@@ -2006,12 +2006,27 @@ ProcInfos findMyProc(const char *procname) {
 
   // info about first process encountered in a system snapshot
   hResult = Process32First(hSnapshot, &pe);
-
+  std::string procstr = procname;
   // retrieve information about the processes
   // and exit if unsuccessful
+	// if we find the process: return process ID
+	
+	  
+	  std::transform(procstr.begin(), procstr.end(), procstr.begin(), [](unsigned char c){ return std::tolower(c); });// same lowercasing as the otther
+	  std::string ex = procstr;
+	  if (!procstr.ends_with(".exe")) {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
+		  ex += ".exe";
+	  }
   while (hResult) {
-    // if we find the process: return process ID
-    if (strcmp(procname, WideToString(pe.szExeFile).c_str()) == 0) { 
+    
+	  
+	  std::string exeName = WideToString(pe.szExeFile);
+	std::transform(exeName.begin(), exeName.end(), exeName.begin(), [](unsigned char c){ return std::tolower(c); });
+	  // for the comparison make it lowercase so that it does the thingy mammombbers insensitiviityness case
+			// this is only for the compariason either way
+		  
+	  
+    if (exeName == ex || exeName == procstr) { 
 	  result.names.push_back(WideToString(pe.szExeFile)); // let me cook
 		// while you might think its less performant to waste all this
 		// on storing related names for no reason
@@ -2027,7 +2042,7 @@ ProcInfos findMyProc(const char *procname) {
   CloseHandle(hSnapshot);
   return result;
 }
-// The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html , modified simply to use WideToString for the process name comparison among other things.
+// The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html, modified simply to use WideToString for the process name comparison among other things.
 // Thanks!
  
 
