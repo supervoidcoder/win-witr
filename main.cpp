@@ -1987,7 +1987,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
 struct ProcInfos {
     std::vector<std::string> names;
     std::vector<int>         pids;
-}
+};
 
 ProcInfos findMyProc(const char *procname) {
 
