@@ -105,6 +105,7 @@ std::string version = []() {
 #endif
 }();
 thread_local std::string currentParentExe = ""; // to store the name of our own parent process for error hints
+bool virtualTerminalEnabled = false; // cached result of virtual terminal check to avoid repeated function calls
 
 std::string WideToString(const std::wstring& wstr);
 
@@ -2032,7 +2033,7 @@ ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 
 int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
-    bool virtualTerminalEnabled = IsVirtualTerminalModeEnabled();
+    virtualTerminalEnabled = IsVirtualTerminalModeEnabled();
     for (int i = 0; i < argc; ++i) {
         std::string arg = argv[i];
 
