@@ -1533,10 +1533,10 @@ UPDATE: This is done now!!
     DWORD targetpid = pid; // the function already passes pid into us, but 
                           // just to be safe that pid doesn't get overwritten in the loop below
     std::string exeName = "Unknown/Dead Process";
-    std::vector<std::string> exeNames;
-    std::vector<ULONGLONG> exeTimes; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
+    std::vector<std::string> exeNames; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
     std::vector<DWORD> pidNames;     // hopefully the compiler can fix it
     std::vector<DWORD> parentPids;
+	ULONGLONG creationTime = GetProcessCreationTime(pid);
     bool found = false;
     while (pid != 0 && pid != 4) {
     found = false; 
@@ -1544,16 +1544,13 @@ UPDATE: This is done now!!
     if (it != pidMap.end()) {
         const PROCESSENTRY32& entry = it->second;
         // Without comments, this literally looks like alien gibberish so lemme explain
-      
-        ULONGLONG creationTime = GetProcessCreationTime(pid); // this stores the creation time of the CURRENT pid (not parent)
-        exeTimes.emplace_back(creationTime); // immediately stores the above to the list
+      	
         exeName = WideToString(entry.szExeFile); //this stores the NAME of the current pid, converted to something that the terminal won't choke and die on
         exeNames.emplace_back(exeName); // this adds the above to the name list
         pidNames.emplace_back(pid); // this adds the current pid (no need to store in var as already passed into if)
         
         parentPid = entry.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
         parentPids.emplace_back(entry.th32ParentProcessID); // adds above to list
-        ULONGLONG parentTime = GetProcessCreationTime(parentPid); // this gets the creation time of that one
 
         if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
             // we can't be sure if the parent actually exists and windows isn't lying to us,
@@ -1573,6 +1570,12 @@ UPDATE: This is done now!!
     // tells us that our target pid is it's parent. This time, we don't have to worry about
     // Checking if the parent is alive, because, well, since the target IS the parent, 
     // it must be alive.
+	    // now we need to reverse all the vector lists we made so
+    // that the ancestry tree is correctly diisplayed from root to children like witr
+    // in c++20 there is a new way to reverse called ranges or smth but i won't use that
+    std::reverse(exeNames.begin(), exeNames.end()); 
+    std::reverse(pidNames.begin(), pidNames.end());  
+    std::reverse(parentPids.begin(), parentPids.end());  
     int children = 0; // i wonder what would happen if you could set an emoji as var name
     for (const auto& pair : pidMap) {
         const PROCESSENTRY32& entry = pair.second;
@@ -1585,14 +1588,9 @@ UPDATE: This is done now!!
 
                 if (entry.th32ParentProcessID == targetpid) {
                     exeName = WideToString(entry.szExeFile); // this stores the name of our pid we're looking at in a var
-                    exeNames.emplace(exeNames.begin(), exeName); // this adds this to the front of the list
-                    // in this case, we are adding stuff to the front of the list, since we're looking at children
-                    // you might've noticed this doesn't have an emplace_front() like emplace_back() since 
-                    // it's inefficient and the creators of the vector lib didn't do it
-                    pidNames.emplace(pidNames.begin(), entry.th32ProcessID);
-                    ULONGLONG childTime = GetProcessCreationTime(entry.th32ProcessID);
-                    exeTimes.emplace(exeTimes.begin(), childTime); // we don't even use this but we need to keep all the vectors the same length
-                    parentPids.emplace(parentPids.begin(), entry.th32ProcessID); // just fill it up, we aren't using it
+                    exeNames.emplace_back(exeName); =
+                    pidNames.emplace_back(entry.th32ProcessID);
+                    parentPids.emplace_back(entry.th32ProcessID); // just fill it up, we aren't using it
                     children++; // keeps track of how many children we have (that sounds wrong when you say it)
 
                 }
@@ -1603,15 +1601,8 @@ UPDATE: This is done now!!
     }
 
     
-CloseHandle(hSnapshot); // we're only closing the handle until we finish messing with the snapshot
-    //phew thankfully we're done with that mess
-    // now we need to reverse all the vector lists we made so
-    // that the ancestry tree is correctly diisplayed from root to children like witr
-    // in c++20 there is a new way to reverse called ranges or smth but i won't use that
-    std::reverse(exeNames.begin(), exeNames.end()); 
-    std::reverse(exeTimes.begin(), exeTimes.end());
-    std::reverse(pidNames.begin(), pidNames.end());  
-    std::reverse(parentPids.begin(), parentPids.end());  
+
+
     // now get the size of one of the lists to know how many we got (they should all be the same length)
     size_t nameSize = exeNames.size();
     
@@ -2137,7 +2128,7 @@ int main(int argc, char* argv[]) {
 				 // snapshot of all processes in the system first so we can pass it to every function from there on
 			
 			  HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-			  if (INVALID_HANDLE_VALUE == hshot) {return {};}
+			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
                 PIDinspect(pids, trash, hshot);
 				CloseHandle(hshot);
             } else {
@@ -2158,7 +2149,7 @@ int main(int argc, char* argv[]) {
         else if (arg[0] != '-') { // if it doesn't start with -- or -
             std::string procName = arg;
 			HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-			  if (INVALID_HANDLE_VALUE == hshot) {return {};}
+			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
             ProcInfos r = findMyProc(procName.c_str(), hshot);
             if (!r.pids.empty()) {
                 std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
