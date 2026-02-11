@@ -2009,8 +2009,7 @@ ProcInfos findMyProc(const char *procname) {
 
   // retrieve information about the processes
   // and exit if unsuccessful
-  while (hResult) {
-    // if we find the process: return process ID
+	// if we find the process: return process ID
 	std::string exeName = WideToString(pe.szExeFile);
 	std::transform(exeName.begin(), exeName.end(), exeName.begin(), 
                    [](unsigned char c){ return std::tolower(c); });
@@ -2022,6 +2021,8 @@ ProcInfos findMyProc(const char *procname) {
 	  if (!exeName.ends_with(".exe") {// no joke i almost typed endsWith here, the J*vaScript mind virus is spreading
 		  ex += ".exe";
 	  }
+  while (hResult) {
+    
 	  
 	  
 			
