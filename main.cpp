@@ -1511,7 +1511,7 @@ UPDATE: This is done now!!
     
     if (Process32First(hSnapshot, &pe32)) {
         do {
-            pidMap[pe32.th32ProcessID] = pe32;
+            pidMap.emplace(pe32.th32ProcessID, pe32);
         } while (Process32Next(hSnapshot, &pe32));
     }
 
