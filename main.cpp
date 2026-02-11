@@ -2124,7 +2124,9 @@ int main(int argc, char* argv[]) {
                 
 
                 std::vector<int> pids;
-				pids.push_back(pid); // function requires it to be a list even if only 1 is passed
+				std::vector<std::string> trash;
+				trash.push_back(""):
+				pids.push_back(pid, trash); // function requires it to be a list even if only 1 is passed
 				
                 PIDinspect({static_cast<DWORD>(pids)});
             } else {
