@@ -108,7 +108,7 @@ thread_local std::string currentParentExe = ""; // to store the name of our own 
 
 std::string WideToString(const std::wstring& wstr);
 
-void EnsureCurrentParentExe() {
+void EnsureCurrentParentExe(hSnapshot) {
     if (!currentParentExe.empty()) return;
 
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -311,8 +311,8 @@ std::string GetReadableFileTime(DWORD pid) {
     return oss.str();
 }
 
-void PrintErrorHints(int errorCode) {
-    EnsureCurrentParentExe();
+void PrintErrorHints(int errorCode, hshot) {
+    EnsureCurrentParentExe(hshot);
     // Use our little lookup table to give hints for specific errors
     if (errorHints.find(errorCode) != errorHints.end()) {
         if (IsVirtualTerminalModeEnabled()) {
@@ -1490,7 +1490,7 @@ return WideToString(stringBuffer);
 #endif
 }
 
-void PrintAncestry(DWORD pid) {
+void PrintAncestry(DWORD pid, hSnapshot) {
 	// now we're geting the name
 // we're making it slower by adding a bunch of snapshots 
 // but again, we'll optimize and refactor later, i need this to work first
@@ -1512,9 +1512,8 @@ UPDATE: This is done now!!
     PROCESSENTRY32 pe32{};
     pe32.dwSize = sizeof(PROCESSENTRY32);
     DWORD parentPid = 0;
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return;
     
+   
     
     DWORD currentProcessId = GetCurrentProcessId(); // checking our own process
     DWORD currentParentPid = 0;
@@ -1727,7 +1726,7 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names) { // ooh guys look i'm in the void
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, hshot) { // ooh guys look i'm in the void
     DWORD pid = pids[0];
 	std::string procName = GetProcessNameFromPid(pid);
 	if (IsVirtualTerminalModeEnabled()) {
@@ -1782,7 +1781,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
                 
         }
         if (queryError) {
-        PrintErrorHints(errorCode);
+        PrintErrorHints(errorCode, hshot);
     }
         
         
@@ -1813,7 +1812,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
                       << "\n Maybe Access is Denied or the process is running entirely in RAM." << std::endl;
         }
         if (queryError) {
-        PrintErrorHints(errorCode);
+        PrintErrorHints(errorCode, hshot);
         // it might seem like overkill to call the function every time there's an error,
         // but if you remember we have a fallback for opening processes, so there are multiple
         // places where an error can occur.
@@ -1925,7 +1924,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
         } else {
             std::cout << "\nWhy It Exists:\n";
         }
-        PrintAncestry(pid);
+        PrintAncestry(pid, hshot);
 
 		FindProcessPorts(pid);
 	
@@ -1989,17 +1988,15 @@ struct ProcInfos {
     std::vector<int>         pids;
 };
 
-ProcInfos findMyProc(const char *procname) {
+ProcInfos findMyProc(const char *procname, hSnapshot) {
 
-  HANDLE hSnapshot;
+  
   PROCESSENTRY32 pe;
   ProcInfos result;
   BOOL hResult;
   
 
-  // snapshot of all processes in the system
-  hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-  if (INVALID_HANDLE_VALUE == hSnapshot) return {};
+ 
 
   // initializing size: needed for using Process32First
   pe.dwSize = sizeof(PROCESSENTRY32);
@@ -2142,8 +2139,11 @@ int main(int argc, char* argv[]) {
 				std::vector<std::string> trash;
 				trash.push_back("");
 				pids.push_back(static_cast<DWORD>(pid));// function requires it to be a list even if only 1 is passed
-				
-                PIDinspect(pids, trash);
+				 // snapshot of all processes in the system first so we can pass it to every function from there on
+			
+			  HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+			  if (INVALID_HANDLE_VALUE == hSnapshot) return {};
+                PIDinspect(pids, trash, hshot);
             } else {
                 if (IsVirtualTerminalModeEnabled()) { // ugh i have to do this EVERY SINGLE TIME
                     std::cerr << "\033[1;31mError:\033[0m --pid option requires an argument." << std::endl;
@@ -2161,10 +2161,12 @@ int main(int argc, char* argv[]) {
         // check for process name if no recognized flags
         else if (arg[0] != '-') { // if it doesn't start with -- or -
             std::string procName = arg;
-            ProcInfos r = findMyProc(procName.c_str());
+			HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+			  if (INVALID_HANDLE_VALUE == hSnapshot) return {};
+            ProcInfos r = findMyProc(procName.c_str(), hshot);
             if (!r.pids.empty()) {
                 std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
-                PIDinspect(dwPids, r.names);
+                PIDinspect(dwPids, r.names, hshot);
             } else {
                 if (IsVirtualTerminalModeEnabled()) {
                     std::cerr << "\033[1;31mError:\033[0m Could not find process with name " << procName << "." << std::endl;
