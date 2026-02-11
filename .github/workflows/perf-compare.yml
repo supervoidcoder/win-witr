@@ -86,6 +86,9 @@ jobs:
       - name: Run Performance Comparison
         shell: pwsh
         run: |
+          # Enable ANSI colors for win-witr C++ output
+          $env:force_ansi = 1
+          
           Write-Host ""
           Write-Host "=====================================" -ForegroundColor Cyan
           Write-Host "WITR PERFORMANCE COMPARISON" -ForegroundColor Cyan
