@@ -67,5 +67,13 @@ $time = Measure-Command { win-witr spoolsv | Out-Default }
 $time = Measure-Command { win-witr taskhostw | Out-Default }
 "taskhostw.exe check took {0} ms" -f $time.TotalMilliseconds
 
+$time = Measure-Command { win-witr Registry | Out-Default }
+"winlogon.exe check took {0} ms" -f $time.TotalMilliseconds
+
+$time = Measure-Command { win-witr System | Out-Default }
+"winlogon.exe check took {0} ms" -f $time.TotalMilliseconds
+
+
  
+
 
