@@ -1,0 +1,231 @@
+name: Performance Comparison
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'main.cpp'
+      - '.github/workflows/perf-compare.yml'
+  pull_request:
+    paths:
+      - 'main.cpp'
+      - '.github/workflows/perf-compare.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  perf-comparison:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: win-witr-cpp
+
+      # Install pranshuparmar's witr (Go version)
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Clone and build pranshuparmar's witr
+        shell: pwsh
+        run: |
+          git clone https://github.com/pranshuparmar/witr.git witr-go
+          cd witr-go
+          go build -o witr.exe
+          Write-Host "Built pranshuparmar's witr (Go version)"
+          .\witr.exe --version
+
+      # Install m-de-graaff's witr-win (Rust version)
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Clone and build m-de-graaff's witr-win
+        shell: pwsh
+        run: |
+          git clone https://github.com/m-de-graaff/witr-win.git witr-rust
+          cd witr-rust
+          cargo build --release
+          Copy-Item "target/release/witr.exe" "witr-rust.exe"
+          Write-Host "Built m-de-graaff's witr-win (Rust version)"
+          .\witr-rust.exe --version
+
+      # Build this repo's win-witr (C++ version)
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Compile win-witr
+        shell: pwsh
+        run: |
+          cd win-witr-cpp
+          cl /O2 /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
+          Write-Host "Built win-witr (C++ version)"
+          .\win-witr.exe --version
+
+      # Run performance comparison tests
+      - name: Run Performance Comparison
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "WITR PERFORMANCE COMPARISON" -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host ""
+          
+          # Add all executables to variables for easy access
+          $witrGo = "$PWD\witr-go\witr.exe"
+          $witrRust = "$PWD\witr-rust.exe"
+          $witrCpp = "$PWD\win-witr-cpp\win-witr.exe"
+          
+          # Test processes - use common Windows processes that should exist
+          $testProcesses = @(
+            "explorer",
+            "winlogon", 
+            "lsass",
+            "csrss",
+            "services",
+            "svchost"
+          )
+          
+          Write-Host "Testing process lookup performance on $($testProcesses.Count) processes" -ForegroundColor Yellow
+          Write-Host ""
+          
+          # Results storage
+          $results = @{
+            "Go" = @()
+            "Rust" = @()
+            "C++" = @()
+          }
+          
+          # Run tests for each process
+          foreach ($process in $testProcesses) {
+            Write-Host "Testing: $process" -ForegroundColor White
+            Write-Host "----------------------------------------" -ForegroundColor Gray
+            
+            # Test Go version
+            Write-Host "  Go version:" -ForegroundColor Green -NoNewline
+            $goTime = Measure-Command { & $witrGo $process 2>&1 | Out-Null }
+            $goMs = [Math]::Round($goTime.TotalMilliseconds, 2)
+            Write-Host " $goMs ms" -ForegroundColor Cyan
+            $results["Go"] += $goMs
+            
+            # Test Rust version
+            Write-Host "  Rust version:" -ForegroundColor Green -NoNewline
+            $rustTime = Measure-Command { & $witrRust $process 2>&1 | Out-Null }
+            $rustMs = [Math]::Round($rustTime.TotalMilliseconds, 2)
+            Write-Host " $rustMs ms" -ForegroundColor Cyan
+            $results["Rust"] += $rustMs
+            
+            # Test C++ version
+            Write-Host "  C++ version:" -ForegroundColor Green -NoNewline
+            $cppTime = Measure-Command { & $witrCpp $process 2>&1 | Out-Null }
+            $cppMs = [Math]::Round($cppTime.TotalMilliseconds, 2)
+            Write-Host " $cppMs ms" -ForegroundColor Cyan
+            $results["C++"] += $cppMs
+            
+            Write-Host ""
+          }
+          
+          # Calculate and display totals
+          Write-Host ""
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "TOTAL RESULTS" -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Cyan
+          
+          $goTotal = ($results["Go"] | Measure-Object -Sum).Sum
+          $rustTotal = ($results["Rust"] | Measure-Object -Sum).Sum
+          $cppTotal = ($results["C++"] | Measure-Object -Sum).Sum
+          
+          Write-Host ""
+          Write-Host "Total time for $($testProcesses.Count) process lookups:" -ForegroundColor Yellow
+          Write-Host "  Go (pranshuparmar/witr):      $([Math]::Round($goTotal, 2)) ms" -ForegroundColor Green
+          Write-Host "  Rust (m-de-graaff/witr-win):  $([Math]::Round($rustTotal, 2)) ms" -ForegroundColor Green
+          Write-Host "  C++ (supervoidcoder/win-witr): $([Math]::Round($cppTotal, 2)) ms" -ForegroundColor Green
+          Write-Host ""
+          
+          # Calculate averages
+          $goAvg = [Math]::Round($goTotal / $testProcesses.Count, 2)
+          $rustAvg = [Math]::Round($rustTotal / $testProcesses.Count, 2)
+          $cppAvg = [Math]::Round($cppTotal / $testProcesses.Count, 2)
+          
+          Write-Host "Average time per lookup:" -ForegroundColor Yellow
+          Write-Host "  Go:   $goAvg ms" -ForegroundColor Green
+          Write-Host "  Rust: $rustAvg ms" -ForegroundColor Green
+          Write-Host "  C++:  $cppAvg ms" -ForegroundColor Green
+          Write-Host ""
+          
+          # Determine winner
+          $times = @{
+            "Go (pranshuparmar/witr)" = $goTotal
+            "Rust (m-de-graaff/witr-win)" = $rustTotal
+            "C++ (supervoidcoder/win-witr)" = $cppTotal
+          }
+          
+          $winner = $times.GetEnumerator() | Sort-Object Value | Select-Object -First 1
+          $slowest = $times.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
+          
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "🏆 FASTEST: $($winner.Name)" -ForegroundColor Green
+          Write-Host "🐌 SLOWEST: $($slowest.Name)" -ForegroundColor Red
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host ""
+          
+          # Calculate speed differences
+          $cppVsGo = [Math]::Round((($goTotal - $cppTotal) / $goTotal) * 100, 1)
+          $cppVsRust = [Math]::Round((($rustTotal - $cppTotal) / $rustTotal) * 100, 1)
+          
+          Write-Host "Performance comparison:" -ForegroundColor Yellow
+          if ($cppVsGo -gt 0) {
+            Write-Host "  C++ is $cppVsGo% faster than Go" -ForegroundColor Green
+          } elseif ($cppVsGo -lt 0) {
+            Write-Host "  C++ is $([Math]::Abs($cppVsGo))% slower than Go" -ForegroundColor Red
+          } else {
+            Write-Host "  C++ and Go have equal performance" -ForegroundColor Yellow
+          }
+          
+          if ($cppVsRust -gt 0) {
+            Write-Host "  C++ is $cppVsRust% faster than Rust" -ForegroundColor Green
+          } elseif ($cppVsRust -lt 0) {
+            Write-Host "  C++ is $([Math]::Abs($cppVsRust))% slower than Rust" -ForegroundColor Red
+          } else {
+            Write-Host "  C++ and Rust have equal performance" -ForegroundColor Yellow
+          }
+          Write-Host ""
+          
+          # Also test --version and --help commands for completeness
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "COMMAND PERFORMANCE TESTS" -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host ""
+          
+          # Test --version
+          Write-Host "Testing --version command:" -ForegroundColor Yellow
+          
+          $goVersionTime = Measure-Command { & $witrGo --version | Out-Null }
+          Write-Host "  Go:   $([Math]::Round($goVersionTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          
+          $rustVersionTime = Measure-Command { & $witrRust --version | Out-Null }
+          Write-Host "  Rust: $([Math]::Round($rustVersionTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          
+          $cppVersionTime = Measure-Command { & $witrCpp --version | Out-Null }
+          Write-Host "  C++:  $([Math]::Round($cppVersionTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          Write-Host ""
+          
+          # Test --help
+          Write-Host "Testing --help command:" -ForegroundColor Yellow
+          
+          $goHelpTime = Measure-Command { & $witrGo --help | Out-Null }
+          Write-Host "  Go:   $([Math]::Round($goHelpTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          
+          $rustHelpTime = Measure-Command { & $witrRust --help | Out-Null }
+          Write-Host "  Rust: $([Math]::Round($rustHelpTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          
+          $cppHelpTime = Measure-Command { & $witrCpp --help | Out-Null }
+          Write-Host "  C++:  $([Math]::Round($cppHelpTime.TotalMilliseconds, 2)) ms" -ForegroundColor Green
+          Write-Host ""
+          
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "Performance comparison complete!" -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Cyan
