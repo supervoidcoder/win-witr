@@ -108,7 +108,7 @@ thread_local std::string currentParentExe = ""; // to store the name of our own 
 
 std::string WideToString(const std::wstring& wstr);
 
-void EnsureCurrentParentExe(hSnapshot) {
+void EnsureCurrentParentExe(HANDLE hSnapshot) {
     if (!currentParentExe.empty()) return;
 
     
@@ -140,7 +140,7 @@ void EnsureCurrentParentExe(hSnapshot) {
         }
     }
 
-    CloseHandle(hSnapshot);
+   
 }
 
 
@@ -310,7 +310,7 @@ std::string GetReadableFileTime(DWORD pid) {
     return oss.str();
 }
 
-void PrintErrorHints(int errorCode, hshot) {
+void PrintErrorHints(int errorCode, HANDLE hshot) {
     EnsureCurrentParentExe(hshot);
     // Use our little lookup table to give hints for specific errors
     if (errorHints.find(errorCode) != errorHints.end()) {
@@ -430,11 +430,8 @@ std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
 // Permalink: https://stackoverflow.com/a/73242956
 // Thanks!
 
-std::string GetProcessNameFromPid(DWORD pid) {
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) {
-        return ""; // vroken
-    }
+std::string GetProcessNameFromPid(DWORD pid, HANDLE snapshot) {
+    
 
     PROCESSENTRY32 pe{};
     pe.dwSize = sizeof(PROCESSENTRY32);
@@ -442,13 +439,13 @@ std::string GetProcessNameFromPid(DWORD pid) {
     if (Process32First(snapshot, &pe)) {
         do {
             if (pe.th32ProcessID == pid) {
-                CloseHandle(snapshot);
+                
                 return WideToString(pe.szExeFile);
             }
         } while (Process32Next(snapshot, &pe));
     }
 
-    CloseHandle(snapshot);
+    
     return "";
 }
 
@@ -1725,9 +1722,9 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, hshot) { // ooh guys look i'm in the void
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot) { // ooh guys look i'm in the void
     DWORD pid = pids[0];
-	std::string procName = GetProcessNameFromPid(pid);
+	std::string procName = GetProcessNameFromPid(pid, hshot);
 	if (IsVirtualTerminalModeEnabled()) {
 		if (procName == ""){
 			std::cout << "\033[34mTarget:\033[0m N/A\n\033[34mProcess:\033[0m N/A\n";
@@ -1987,7 +1984,7 @@ struct ProcInfos {
     std::vector<int>         pids;
 };
 
-ProcInfos findMyProc(const char *procname, hSnapshot) {
+ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 
   
   PROCESSENTRY32 pe;
@@ -2034,8 +2031,7 @@ ProcInfos findMyProc(const char *procname, hSnapshot) {
     hResult = Process32Next(hSnapshot, &pe);
   }
 
-  // closes an open handle (CreateToolhelp32Snapshot)
-  CloseHandle(hSnapshot);
+ 
   return result;
 }
 // The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html, modified simply to use WideToString for the process name comparison among other things.
@@ -2143,6 +2139,7 @@ int main(int argc, char* argv[]) {
 			  HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 			  if (INVALID_HANDLE_VALUE == hSnapshot) {return {}};
                 PIDinspect(pids, trash, hshot);
+				CloseHandle(hshot);
             } else {
                 if (IsVirtualTerminalModeEnabled()) { // ugh i have to do this EVERY SINGLE TIME
                     std::cerr << "\033[1;31mError:\033[0m --pid option requires an argument." << std::endl;
@@ -2166,6 +2163,7 @@ int main(int argc, char* argv[]) {
             if (!r.pids.empty()) {
                 std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
                 PIDinspect(dwPids, r.names, hshot);
+				CloseHandle(hshot);
             } else {
                 if (IsVirtualTerminalModeEnabled()) {
                     std::cerr << "\033[1;31mError:\033[0m Could not find process with name " << procName << "." << std::endl;
