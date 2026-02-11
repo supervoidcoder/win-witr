@@ -1551,6 +1551,7 @@ UPDATE: This is done now!!
         
         parentPid = entry.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
         parentPids.emplace_back(entry.th32ParentProcessID); // adds above to list
+		ULONGLONG parentTime = GetProcessCreationTime(entry.th32ParentProcessID);
 
         if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
             // we can't be sure if the parent actually exists and windows isn't lying to us,
