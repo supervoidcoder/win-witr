@@ -2012,7 +2012,7 @@ ProcInfos findMyProc(const char *procname) {
   while (hResult) {
     // if we find the process: return process ID
     if (strcmp(procname, WideToString(pe.szExeFile).c_str()) == 0) { 
-	  result.names.push_back(pe.szExeFile); // let me cook
+	  result.names.push_back(WideToString(pe.szExeFile)); // let me cook
 		// while you might think its less performant to waste all this
 		// on storing related names for no reason
 		// its crucial for the related processes since
