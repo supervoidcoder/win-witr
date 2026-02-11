@@ -32,9 +32,11 @@ jobs:
       - name: Clone and build pranshuparmar's witr
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git clone https://github.com/pranshuparmar/witr.git witr-go
           cd witr-go
           go build -o witr.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           Write-Host "Built pranshuparmar's witr (Go version)"
           .\witr.exe --version
 
@@ -45,9 +47,11 @@ jobs:
       - name: Clone and build m-de-graaff's witr-win
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git clone https://github.com/m-de-graaff/witr-win.git witr-rust
           cd witr-rust
           cargo build --release
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           Copy-Item "target/release/witr.exe" "witr-rust.exe"
           Write-Host "Built m-de-graaff's witr-win (Rust version)"
           .\witr-rust.exe --version
@@ -59,8 +63,10 @@ jobs:
       - name: Compile win-witr
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           cd win-witr-cpp
           cl /O2 /GL /std:c++20 /EHsc main.cpp /DUNICODE /D_UNICODE /Fe:win-witr.exe
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           Write-Host "Built win-witr (C++ version)"
           .\win-witr.exe --version
 
@@ -90,6 +96,25 @@ jobs:
           )
           
           Write-Host "Testing process lookup performance on $($testProcesses.Count) processes" -ForegroundColor Yellow
+          Write-Host ""
+          
+          # First, show sample output from each tool for explorer process
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "SAMPLE OUTPUT COMPARISON (explorer)" -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host ""
+          
+          Write-Host "--- Go version output ---" -ForegroundColor Green
+          & $witrGo explorer
+          Write-Host ""
+          
+          Write-Host "--- Rust version output ---" -ForegroundColor Green
+          & $witrRust explorer
+          Write-Host ""
+          
+          Write-Host "--- C++ version output ---" -ForegroundColor Green
+          & $witrCpp explorer
+          Write-Host ""
           Write-Host ""
           
           # Results storage
