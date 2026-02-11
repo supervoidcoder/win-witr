@@ -105,14 +105,14 @@ std::string version = []() {
 #endif
 }();
 thread_local std::string currentParentExe = ""; // to store the name of our own parent process for error hints
+bool virtualTerminalEnabled = false; // cached result of virtual terminal check to avoid repeated function calls
 
 std::string WideToString(const std::wstring& wstr);
 
-void EnsureCurrentParentExe() {
+void EnsureCurrentParentExe(HANDLE hSnapshot) {
     if (!currentParentExe.empty()) return;
 
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return;
+    
 
     PROCESSENTRY32 pe32{};
     pe32.dwSize = sizeof(PROCESSENTRY32);
@@ -141,7 +141,7 @@ void EnsureCurrentParentExe() {
         }
     }
 
-    CloseHandle(hSnapshot);
+   
 }
 
 
@@ -275,6 +275,11 @@ ULONGLONG GetProcessCreationTime(DWORD pid) {
     CloseHandle(hProcess);
     return 0;
 }
+
+ULONGLONG GetProcessCreationTime(DWORD pid, const std::unordered_map<DWORD, PROCESSENTRY32>& pidMap) {
+    if (!pidMap.empty() && pidMap.find(pid) == pidMap.end()) return 0;
+    return GetProcessCreationTime(pid);
+}
 // Process uptime helper
 // Reference: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes
 // While this does indeed give you the time since the process was created,
@@ -311,11 +316,32 @@ std::string GetReadableFileTime(DWORD pid) {
     return oss.str();
 }
 
-void PrintErrorHints(int errorCode) {
-    EnsureCurrentParentExe();
+std::string GetReadableFileTime(DWORD pid, const std::unordered_map<DWORD, PROCESSENTRY32>& pidMap) {
+    ULONGLONG creationTime = GetProcessCreationTime(pid, pidMap);
+    if (creationTime == 0) return "N/A";
+    time_t unixTime = windows_time_to_unix_epoch(creationTime);
+    time_t now = std::time(nullptr);
+    double diffSeconds = std::difftime(now, unixTime);
+
+    std::string ago;
+    if (diffSeconds < 60) ago = std::to_string((int)diffSeconds) + " seconds ago";
+    else if (diffSeconds < 3600) ago = std::to_string((int)diffSeconds / 60) + " minutes ago";
+    else if (diffSeconds < 86400) ago = std::to_string((int)diffSeconds / 3600) + " hours ago";
+    else ago = std::to_string((int)diffSeconds / 86400) + " days ago";
+
+    std::tm bt{};
+    localtime_s(&bt, &unixTime);
+
+    std::ostringstream oss;
+    oss << ago << " (" << std::put_time(&bt, "%a %Y-%m-%d %H:%M:%S %z") << ")";
+    return oss.str();
+}
+
+void PrintErrorHints(int errorCode, HANDLE hshot) {
+    EnsureCurrentParentExe(hshot);
     // Use our little lookup table to give hints for specific errors
     if (errorHints.find(errorCode) != errorHints.end()) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             std::cerr << "\033[1;33mHint:\033[0m " << errorHints[errorCode] << std::endl;
         } else {
             std::cerr << "Hint: " << errorHints[errorCode] << std::endl;
@@ -431,11 +457,8 @@ std::optional<std::wstring> GetUserNameFromProcess(DWORD id)
 // Permalink: https://stackoverflow.com/a/73242956
 // Thanks!
 
-std::string GetProcessNameFromPid(DWORD pid) {
-    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) {
-        return ""; // vroken
-    }
+std::string GetProcessNameFromPid(DWORD pid, HANDLE snapshot) {
+    
 
     PROCESSENTRY32 pe{};
     pe.dwSize = sizeof(PROCESSENTRY32);
@@ -443,13 +466,13 @@ std::string GetProcessNameFromPid(DWORD pid) {
     if (Process32First(snapshot, &pe)) {
         do {
             if (pe.th32ProcessID == pid) {
-                CloseHandle(snapshot);
+                
                 return WideToString(pe.szExeFile);
             }
         } while (Process32Next(snapshot, &pe));
     }
 
-    CloseHandle(snapshot);
+    
     return "";
 }
 
@@ -459,7 +482,7 @@ std::string GetCommandLine(HANDLE hproc) {
 
 BOOL isWow64 = FALSE;
 if (!IsWow64Process(hproc, &isWow64)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
     } else {
         return "Failed to Access (wwitr:wow64checkfail)";
@@ -475,7 +498,7 @@ if (!isWoW64) {
 typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -496,7 +519,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
     // so the handle gets passed to this function and we don't need to clean up our handle just yet, just return
     // but we still should add a cout to see where it failed
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m"; // failure
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)"; // failure
@@ -509,7 +532,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -519,7 +542,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -534,7 +557,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -554,7 +577,7 @@ return WideToString(stringBuffer);
     // and I think it's only slow in python
     auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
     if (!queryInfo) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
         } else {
             return "Failed to Access (wwitr:functionptrs)";
@@ -564,7 +587,7 @@ return WideToString(stringBuffer);
     ULONG_PTR peb32Address = 0;
     NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
     if (status != 0 || peb32Address == 0) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
         } else {
             return "Failed to Access (wwitr:ntqueryfailed)";
@@ -573,7 +596,7 @@ return WideToString(stringBuffer);
 
     ULONG procParamPtr32 = 0;
     if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
         } else {
             return "Failed to Access (wwitr:procParamPtrRead)";
@@ -582,7 +605,7 @@ return WideToString(stringBuffer);
 
     UNICODE_STRING32 cmdLStruct32{};
     if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x40, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:cmdLStructFail)";
@@ -597,7 +620,7 @@ return WideToString(stringBuffer);
     std::vector<wchar_t> buffer(wchar_count + 1, 0);
     if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
     {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:bufferReadFail)";
@@ -628,7 +651,7 @@ return WideToString(stringBuffer);
         typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -638,7 +661,7 @@ if (!queryInfo) {
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)";
@@ -648,7 +671,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 PVOID procParamPtr = nullptr;
 //for wow64 processes, the offset is different
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -658,7 +681,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -673,7 +696,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -704,7 +727,7 @@ return WideToString(stringBuffer);
    typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -714,7 +737,7 @@ if (!queryInfo) {
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)";
@@ -724,7 +747,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 PVOID procParamPtr = nullptr;
 //for wow64 processes, the offset is different
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -734,7 +757,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x40, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -749,7 +772,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -779,7 +802,7 @@ return WideToString(stringBuffer);
         auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
 
         if (!queryInfo64 || !readMem64) {
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
             } else {
                 return "Failed to Access (wwitr:functionptrs)";
@@ -803,7 +826,7 @@ return WideToString(stringBuffer);
         ULONG64 peb64Address = pbi64.PebBaseAddress;
         if (status != 0 || peb64Address == 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
             } else {
                 return "Failed to Access (wwitr:ntqueryfailed)";
@@ -814,7 +837,7 @@ return WideToString(stringBuffer);
         status = readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
             } else {
                 return "Failed to Access (wwitr:procParamPtrRead)";
@@ -825,7 +848,7 @@ return WideToString(stringBuffer);
         status = readMem64(targetHandle, procParamPtr64 + 0x70, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
             } else {
                 return "Failed to Access (wwitr:cmdLStructFail)";
@@ -842,7 +865,7 @@ return WideToString(stringBuffer);
         status = readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
             } else {
                 return "Failed to Access (wwitr:bufferReadFail)";
@@ -865,7 +888,7 @@ return WideToString(stringBuffer);
 //idk i don't use no surface laptops
 BOOL isWow64 = FALSE;
 if (!IsWow64Process(hproc, &isWow64)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
     } else {
         return "Failed to Access (wwitr:wow64checkfail)";
@@ -879,7 +902,7 @@ typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, 
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -889,7 +912,7 @@ if (!queryInfo) {
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)";
@@ -898,7 +921,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -908,7 +931,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -923,7 +946,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -939,7 +962,7 @@ return WideToString(stringBuffer);
 
     auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
     if (!queryInfo) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
         } else {
             return "Failed to Access (wwitr:functionptrs)";
@@ -949,7 +972,7 @@ return WideToString(stringBuffer);
     ULONG_PTR peb32Address = 0;
     NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
     if (status != 0 || peb32Address == 0) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
         } else {
             return "Failed to Access (wwitr:ntqueryfailed)";
@@ -958,7 +981,7 @@ return WideToString(stringBuffer);
 
     ULONG procParamPtr32 = 0;
     if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
         } else {
             return "Failed to Access (wwitr:procParamPtrRead)";
@@ -967,7 +990,7 @@ return WideToString(stringBuffer);
 
     UNICODE_STRING32 cmdLStruct32{};
     if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x40, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:cmdLStructFail)";
@@ -982,7 +1005,7 @@ return WideToString(stringBuffer);
     std::vector<wchar_t> buffer(wchar_count + 1, 0);
     if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
     {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:bufferReadFail)";
@@ -993,7 +1016,7 @@ return WideToString(stringBuffer);
     return WideToString(stringBuffer);
 }
 #else 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:unknownarch)\033[0m";
     } else {
         return "Failed to Access (wwitr:unknownarch)";
@@ -1016,7 +1039,7 @@ std::string GetWorkingDir(HANDLE hproc) {
 
 BOOL isWow64 = FALSE;
 if (!IsWow64Process(hproc, &isWow64)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
     } else {
         return "Failed to Access (wwitr:wow64checkfail)";
@@ -1029,7 +1052,7 @@ if (!isWoW64) {
 typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -1039,7 +1062,7 @@ if (!queryInfo) {
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)";
@@ -1048,7 +1071,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -1058,7 +1081,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x38, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -1073,7 +1096,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -1087,7 +1110,7 @@ return WideToString(stringBuffer);
 } else {
     auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
     if (!queryInfo) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
         } else {
             return "Failed to Access (wwitr:functionptrs)";
@@ -1097,7 +1120,7 @@ return WideToString(stringBuffer);
     ULONG_PTR peb32Address = 0;
     NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
     if (status != 0 || peb32Address == 0) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
         } else {
             return "Failed to Access (wwitr:ntqueryfailed)";
@@ -1106,7 +1129,7 @@ return WideToString(stringBuffer);
 
     ULONG procParamPtr32 = 0;
     if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
         } else {
             return "Failed to Access (wwitr:procParamPtrRead)";
@@ -1115,7 +1138,7 @@ return WideToString(stringBuffer);
 
     UNICODE_STRING32 cmdLStruct32{};
     if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x24, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:cmdLStructFail)";
@@ -1130,7 +1153,7 @@ return WideToString(stringBuffer);
     std::vector<wchar_t> buffer(wchar_count + 1, 0);
     if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
     {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:bufferReadFail)";
@@ -1147,7 +1170,7 @@ return WideToString(stringBuffer);
         typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -1157,7 +1180,7 @@ if (!queryInfo) {
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)";
@@ -1166,7 +1189,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -1176,7 +1199,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x24, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -1191,7 +1214,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -1210,7 +1233,7 @@ return WideToString(stringBuffer);
    typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -1220,7 +1243,7 @@ if (!queryInfo) {
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)";
@@ -1229,7 +1252,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -1239,7 +1262,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x24, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -1254,7 +1277,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -1271,7 +1294,7 @@ return WideToString(stringBuffer);
         auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
 
         if (!queryInfo64 || !readMem64) {
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
             } else {
                 return "Failed to Access (wwitr:functionptrs)";
@@ -1295,7 +1318,7 @@ return WideToString(stringBuffer);
         ULONG64 peb64Address = pbi64.PebBaseAddress;
         if (status != 0 || peb64Address == 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
             } else {
                 return "Failed to Access (wwitr:ntqueryfailed)";
@@ -1306,7 +1329,7 @@ return WideToString(stringBuffer);
         status = readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
             } else {
                 return "Failed to Access (wwitr:procParamPtrRead)";
@@ -1317,7 +1340,7 @@ return WideToString(stringBuffer);
         status = readMem64(targetHandle, procParamPtr64 + 0x38, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
             } else {
                 return "Failed to Access (wwitr:cmdLStructFail)";
@@ -1334,7 +1357,7 @@ return WideToString(stringBuffer);
         status = readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
             } else {
                 return "Failed to Access (wwitr:bufferReadFail)";
@@ -1355,7 +1378,7 @@ return WideToString(stringBuffer);
 
 BOOL isWow64 = FALSE;
 if (!IsWow64Process(hproc, &isWow64)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:wow64checkfail)\033[0m";
     } else {
         return "Failed to Access (wwitr:wow64checkfail)";
@@ -1369,7 +1392,7 @@ typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, 
 auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
 
 if (!queryInfo) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
     } else {
         return "Failed to Access (wwitr:functionptrs)";
@@ -1379,7 +1402,7 @@ if (!queryInfo) {
 PROCESS_BASIC_INFORMATION pbi;
 if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
     } else {
         return "Failed to Access (wwitr:ntqueryfailed)";
@@ -1388,7 +1411,7 @@ if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
 
 PVOID procParamPtr = nullptr;
 if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
     } else {
         return "Failed to Access (wwitr:procParamPtrRead)";
@@ -1398,7 +1421,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, s
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
 if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x38, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
     } else {
         return "Failed to Access (wwitr:cmdLStructFail)";
@@ -1413,7 +1436,7 @@ size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
 std::vector<wchar_t> buffer(wchar_count + 1, 0);
 if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
 {
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m"; 
     } else {
         return "Failed to Access (wwitr:bufferReadFail)"; 
@@ -1428,7 +1451,7 @@ return WideToString(stringBuffer);
 
     auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
     if (!queryInfo) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:functionptrs)\033[0m";
         } else {
             return "Failed to Access (wwitr:functionptrs)";
@@ -1438,7 +1461,7 @@ return WideToString(stringBuffer);
     ULONG_PTR peb32Address = 0;
     NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
     if (status != 0 || peb32Address == 0) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:ntqueryfailed)\033[0m";
         } else {
             return "Failed to Access (wwitr:ntqueryfailed)";
@@ -1447,7 +1470,7 @@ return WideToString(stringBuffer);
 
     ULONG procParamPtr32 = 0;
     if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:procParamPtrRead)\033[0m";
         } else {
             return "Failed to Access (wwitr:procParamPtrRead)";
@@ -1456,7 +1479,7 @@ return WideToString(stringBuffer);
 
     UNICODE_STRING32 cmdLStruct32{};
     if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x24, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:cmdLStructFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:cmdLStructFail)";
@@ -1471,7 +1494,7 @@ return WideToString(stringBuffer);
     std::vector<wchar_t> buffer(wchar_count + 1, 0);
     if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
     {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             return "\033[31mFailed to Access (wwitr:bufferReadFail)\033[0m";
         } else {
             return "Failed to Access (wwitr:bufferReadFail)";
@@ -1482,7 +1505,7 @@ return WideToString(stringBuffer);
     return WideToString(stringBuffer);
 }
 #else 
-    if (IsVirtualTerminalModeEnabled()) {
+    if (virtualTerminalEnabled) {
         return "\033[31mFailed to Access (wwitr:unknownarch)\033[0m";
     } else {
         return "Failed to Access (wwitr:unknownarch)";
@@ -1490,7 +1513,7 @@ return WideToString(stringBuffer);
 #endif
 }
 
-void PrintAncestry(DWORD pid) {
+void PrintAncestry(DWORD pid, HANDLE hSnapshot, const std::unordered_map<DWORD, PROCESSENTRY32>& pidMap) {
 	// now we're geting the name
 // we're making it slower by adding a bunch of snapshots 
 // but again, we'll optimize and refactor later, i need this to work first
@@ -1508,65 +1531,68 @@ UPDATE: This is done now!!
 
     
     
-
+    // Build a PID→process map ONCE instead of walking 3 times
+    std::unordered_map<DWORD, PROCESSENTRY32> localPidMap;
+    const std::unordered_map<DWORD, PROCESSENTRY32>* pidMapPtr = &pidMap;
     PROCESSENTRY32 pe32{};
     pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    if (pidMapPtr->empty()) {
+        if (Process32First(hSnapshot, &pe32)) {
+            do {
+                localPidMap.emplace(pe32.th32ProcessID, pe32);
+            } while (Process32Next(hSnapshot, &pe32));
+        }
+        pidMapPtr = &localPidMap;
+    }
+
     DWORD parentPid = 0;
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) return;
     
+   
     
     DWORD currentProcessId = GetCurrentProcessId(); // checking our own process
     DWORD currentParentPid = 0;
 
-    if (Process32First(hSnapshot, &pe32)) { // here, we're gonna use the existing snapshot so it doesn't use another
-        do {
-            // it shouldn't harm performance, but even if it does, I want to get 
-            // the features done first before optimizing anything
-            if (pe32.th32ProcessID == currentProcessId) {
-                break;
-            }
-        } while (Process32Next(hSnapshot, &pe32));
+    // here, we're gonna use the existing snapshot so it doesn't use another
+    // it shouldn't harm performance, but even if it does, I want to get 
+    // the features done first before optimizing anything
+    auto currentIt = pidMapPtr->find(currentProcessId);
+    if (currentIt != pidMapPtr->end()) {
+        pe32 = currentIt->second;
     }
     
     DWORD targetpid = pid; // the function already passes pid into us, but 
                           // just to be safe that pid doesn't get overwritten in the loop below
     std::string exeName = "Unknown/Dead Process";
-    std::vector<std::string> exeNames;
-    std::vector<ULONGLONG> exeTimes; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
+    std::vector<std::string> exeNames; // sorry for the crap code but idk how to make multidimensional arrays yet 😭😭😭
     std::vector<DWORD> pidNames;     // hopefully the compiler can fix it
     std::vector<DWORD> parentPids;
+	ULONGLONG creationTime = GetProcessCreationTime(pid, *pidMapPtr);
     bool found = false;
     while (pid != 0 && pid != 4) {
     found = false; 
-    if (Process32First(hSnapshot, &pe32)) {
-        do {
-            if (pe32.th32ProcessID == pid) {
-                // Without comments, this literally looks like alien gibberish so lemme explain
-              
-                ULONGLONG creationTime = GetProcessCreationTime(pid); // this stores the creation time of the CURRENT pid (not parent)
-                exeTimes.emplace_back(creationTime); // immediately stores the above to the list
-                exeName = WideToString(pe32.szExeFile); //this stores the NAME of the current pid, converted to something that the terminal won't choke and die on
-                exeNames.emplace_back(exeName); // this adds the above to the name list
-                pidNames.emplace_back(pid); // this adds the current pid (no need to store in var as already passed into if)
-                
-                parentPid = pe32.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
-                parentPids.emplace_back(pe32.th32ParentProcessID); // adds above to list
-                ULONGLONG parentTime = GetProcessCreationTime(parentPid); // this gets the creation time of that one
+    auto it = pidMapPtr->find(pid);
+    if (it != pidMapPtr->end()) {
+        const PROCESSENTRY32& entry = it->second;
+        // Without comments, this literally looks like alien gibberish so lemme explain
+      	
+        exeName = WideToString(entry.szExeFile); //this stores the NAME of the current pid, converted to something that the terminal won't choke and die on
+        exeNames.emplace_back(exeName); // this adds the above to the name list
+        pidNames.emplace_back(pid); // this adds the current pid (no need to store in var as already passed into if)
+        
+        parentPid = entry.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
+        parentPids.emplace_back(entry.th32ParentProcessID); // adds above to list
+    	ULONGLONG parentTime = GetProcessCreationTime(entry.th32ParentProcessID, *pidMapPtr);
 
-                if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
-                    // we can't be sure if the parent actually exists and windows isn't lying to us,
-                    // so always double check
-                        pid = 0; 
-                } else {
+        if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
+            // we can't be sure if the parent actually exists and windows isn't lying to us,
+            // so always double check
+                pid = 0; 
+        } else {
 
-                    pid = parentPid;
-                }
-                found = true;
-                break;
-            }
-        } while (Process32Next(hSnapshot, &pe32));
-
+            pid = parentPid;
+        }
+        found = true;
     }
      
     if (!found) break;
@@ -1576,9 +1602,15 @@ UPDATE: This is done now!!
     // tells us that our target pid is it's parent. This time, we don't have to worry about
     // Checking if the parent is alive, because, well, since the target IS the parent, 
     // it must be alive.
+	    // now we need to reverse all the vector lists we made so
+    // that the ancestry tree is correctly diisplayed from root to children like witr
+    // in c++20 there is a new way to reverse called ranges or smth but i won't use that
+    std::reverse(exeNames.begin(), exeNames.end()); 
+    std::reverse(pidNames.begin(), pidNames.end());  
+    std::reverse(parentPids.begin(), parentPids.end());  
     int children = 0; // i wonder what would happen if you could set an emoji as var name
-    if (Process32First(hSnapshot, &pe32)) {
-        do {
+    for (const auto& pair : *pidMapPtr) {
+        const PROCESSENTRY32& entry = pair.second;
             
                // this time, our target pid is already stored at the very top of our list.
                // this means we don't have to add target pid stuff.
@@ -1586,16 +1618,11 @@ UPDATE: This is done now!!
                // the previous loop, since emplacing to the front requires shifting the entire list
                // and therefore is inefficient, robbing us of a couple milliseconds of precious cpu time :(
 
-                if (pe32.th32ParentProcessID == targetpid) {
-                    exeName = WideToString(pe32.szExeFile); // this stores the name of our pid we're looking at in a var
-                    exeNames.emplace(exeNames.begin(), exeName); // this adds this to the front of the list
-                    // in this case, we are adding stuff to the front of the list, since we're looking at children
-                    // you might've noticed this doesn't have an emplace_front() like emplace_back() since 
-                    // it's inefficient and the creators of the vector lib didn't do it
-                    pidNames.emplace(pidNames.begin(), pe32.th32ProcessID);
-                    ULONGLONG childTime = GetProcessCreationTime(pe32.th32ProcessID);
-                    exeTimes.emplace(exeTimes.begin(), childTime); // we don't even use this but we need to keep all the vectors the same length
-                    parentPids.emplace(parentPids.begin(), pe32.th32ProcessID); // just fill it up, we aren't using it
+                if (entry.th32ParentProcessID == targetpid) {
+                    exeName = WideToString(entry.szExeFile); // this stores the name of our pid we're looking at in a var
+                    exeNames.emplace_back(exeName); 
+                    pidNames.emplace_back(entry.th32ProcessID);
+                    parentPids.emplace_back(entry.th32ProcessID); // just fill it up, we aren't using it
                     children++; // keeps track of how many children we have (that sounds wrong when you say it)
 
                 }
@@ -1603,20 +1630,11 @@ UPDATE: This is done now!!
 
                 
             
-        } while (Process32Next(hSnapshot, &pe32));
-
     }
 
     
-CloseHandle(hSnapshot); // we're only closing the handle until we finish messing with the snapshot
-    //phew thankfully we're done with that mess
-    // now we need to reverse all the vector lists we made so
-    // that the ancestry tree is correctly diisplayed from root to children like witr
-    // in c++20 there is a new way to reverse called ranges or smth but i won't use that
-    std::reverse(exeNames.begin(), exeNames.end()); 
-    std::reverse(exeTimes.begin(), exeTimes.end());
-    std::reverse(pidNames.begin(), pidNames.end());  
-    std::reverse(parentPids.begin(), parentPids.end());  
+
+
     // now get the size of one of the lists to know how many we got (they should all be the same length)
     size_t nameSize = exeNames.size();
     
@@ -1634,13 +1652,13 @@ CloseHandle(hSnapshot); // we're only closing the handle until we finish messing
         if (i > 0) {
             
             std::cout << "  "; // add one indentation att start so it looks cleaner
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             std::cout << "\033[35m└─\033[0m ";  // it's the little thingy thing └─ unicode from witr 
         } else {
             std::cout << "└─ ";  
         }}
            
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             if (targetpid == pidNames[i])  {
                 std::cout << "\033[1;32m" << exeNames[i] << " (PID " << pidNames[i] << ")" << "\033[0m" << std::endl;
             } else {
@@ -1704,7 +1722,7 @@ void FindProcessPorts(DWORD targetPid) {
             }
 
             if (!listening.empty()) {
-                if (IsVirtualTerminalModeEnabled()) {
+                if (virtualTerminalEnabled) {
                     std::cout << "\033[1;32mListening\033[0m: \n";
                 } else {
                     std::cout << "Listening: \n";
@@ -1727,10 +1745,18 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names) { // ooh guys look i'm in the void
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot) { // ooh guys look i'm in the void
     DWORD pid = pids[0];
-	std::string procName = GetProcessNameFromPid(pid);
-	if (IsVirtualTerminalModeEnabled()) {
+    std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
+    PROCESSENTRY32 pe32{};
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+    if (Process32First(hshot, &pe32)) {
+        do {
+            pidMap.emplace(pe32.th32ProcessID, pe32);
+        } while (Process32Next(hshot, &pe32));
+    }
+	std::string procName = GetProcessNameFromPid(pid, hshot);
+	if (virtualTerminalEnabled) {
 		if (procName == ""){
 			std::cout << "\033[34mTarget:\033[0m N/A\n\033[34mProcess:\033[0m N/A\n";
 		} else {
@@ -1767,7 +1793,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
         errorCode = GetLastError();
 	
         
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             
             queryError = true;
             std::cerr << "\033[1;31mError:\033[0m Could not open process with PID " 
@@ -1782,7 +1808,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
                 
         }
         if (queryError) {
-        PrintErrorHints(errorCode);
+        PrintErrorHints(errorCode, hshot);
     }
         
         
@@ -1793,7 +1819,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
     DWORD size = MAX_PATH;
         
     if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size)) {
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             std::cout << "\033[34mExecutable Path:\033[0m " << exePath << std::endl;
         } else {
             std::cout << "Executable Path: " << exePath << std::endl;
@@ -1801,7 +1827,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
     } else {
         
         errorCode = GetLastError();
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             queryError = true;
             std::cerr << "\033[1;31mError:\033[0m Unable to query executable path. Error code: " 
                       << errorCode 
@@ -1813,7 +1839,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
                       << "\n Maybe Access is Denied or the process is running entirely in RAM." << std::endl;
         }
         if (queryError) {
-        PrintErrorHints(errorCode);
+        PrintErrorHints(errorCode, hshot);
         // it might seem like overkill to call the function every time there's an error,
         // but if you remember we have a fallback for opening processes, so there are multiple
         // places where an error can occur.
@@ -1828,14 +1854,14 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
         // Use our little lookup table to give hints for specific errors
         auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
         if (user.has_value()) {
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
              std::cout << "\033[34mUser\033[0m: " << WideToString(user.value()) << std::endl;
             } else {
                 std::cout << "User: " << WideToString(user.value()) << std::endl;
             }
             
         } else {
-           if (IsVirtualTerminalModeEnabled()) {
+           if (virtualTerminalEnabled) {
             std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m" << std::endl; 
         } else {
             std::cout << "User: N/A (Failed to access info)" << std::endl;
@@ -1845,7 +1871,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
         std::string command = GetCommandLine(hProcess);
 
         
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                  std::cout << "\033[1;32mCommand\033[0m: " << command << std::endl;
             } else {
                     std::cout << "Command: " << command << std::endl;
@@ -1854,7 +1880,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
 	
 
         
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                  std::cout << "\033[1;32mWorking Directory\033[0m: " << workdir << std::endl;
             } else {
                     std::cout << "Working Directory: " << workdir << std::endl;
@@ -1898,7 +1924,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
 			
 			
 		
-		if (IsVirtualTerminalModeEnabled()) {
+		if (virtualTerminalEnabled) {
                  std::cout << "\033[1;32mRAM Usage\033[0m: " << FRAM << std::endl;
 			// I know RAM is technically a "nerdy tech term" or whatever and it'd be more logical
 		// to say "memory" but I feel like at this point everyone knows what RAM means
@@ -1920,12 +1946,12 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
          
          // TODO: add color text
          
-        if (IsVirtualTerminalModeEnabled()) {
+        if (virtualTerminalEnabled) {
             std::cout << "\n\033[1;35mWhy It Exists:\033[0m\n";
         } else {
             std::cout << "\nWhy It Exists:\n";
         }
-        PrintAncestry(pid);
+        PrintAncestry(pid, hshot, pidMap);
 
 		FindProcessPorts(pid);
 	
@@ -1933,14 +1959,14 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
 		
 		
 
-        if (IsVirtualTerminalModeEnabled()) {
-            std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid) << std::endl;
+        if (virtualTerminalEnabled) {
+            std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid, pidMap) << std::endl;
         } else {
-            std::cout << "\nStarted: " << GetReadableFileTime(pid) << std::endl;
+            std::cout << "\nStarted: " << GetReadableFileTime(pid, pidMap) << std::endl;
         }
 
         if (pids.size() > 1) {
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 std::cout << "\033[1;35mRelated Processes:\033[0m\n";
             } else {
                 std::cout << "Related Processes:\n";
@@ -1948,7 +1974,7 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
             
             for (size_t i = 1; i < pids.size(); i++) {
                 std::string relatedProcName = names[i];
-                if (IsVirtualTerminalModeEnabled()) {
+                if (virtualTerminalEnabled) {
                     std::cout << "\t\033[36m" << relatedProcName << "\033[90m (PID " << pids[i] << ")\033[0m\n";
                 } else {
                     std::cout << "\t" << relatedProcName << " (PID " << pids[i] << ")\n";
@@ -1989,17 +2015,15 @@ struct ProcInfos {
     std::vector<int>         pids;
 };
 
-ProcInfos findMyProc(const char *procname) {
+ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 
-  HANDLE hSnapshot;
+  
   PROCESSENTRY32 pe;
   ProcInfos result;
   BOOL hResult;
   
 
-  // snapshot of all processes in the system
-  hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-  if (INVALID_HANDLE_VALUE == hSnapshot) return {};
+ 
 
   // initializing size: needed for using Process32First
   pe.dwSize = sizeof(PROCESSENTRY32);
@@ -2038,8 +2062,7 @@ ProcInfos findMyProc(const char *procname) {
     hResult = Process32Next(hSnapshot, &pe);
   }
 
-  // closes an open handle (CreateToolhelp32Snapshot)
-  CloseHandle(hSnapshot);
+ 
   return result;
 }
 // The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html, modified simply to use WideToString for the process name comparison among other things.
@@ -2048,6 +2071,7 @@ ProcInfos findMyProc(const char *procname) {
 
 int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
+    virtualTerminalEnabled = IsVirtualTerminalModeEnabled();
     for (int i = 0; i < argc; ++i) {
         std::string arg = argv[i];
 
@@ -2066,7 +2090,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "\nwin-witr - Why is this running? Windows version by supervoidcoder." << std::endl;
             }
             
-            if (IsVirtualTerminalModeEnabled()) {
+            if (virtualTerminalEnabled) {
                 if (IsProcessElevated()) {
                     std::cout << "\033[1;32mRunning with elevated privileges (Admin).\033[0m" << std::endl;
                 } else {
@@ -2121,7 +2145,7 @@ int main(int argc, char* argv[]) {
                      
                      i++; 
                 } catch (const std::invalid_argument& ia) {
-                     if (IsVirtualTerminalModeEnabled()) {
+                     if (virtualTerminalEnabled) {
                          std::cerr << "\033[1;31mError:\033[0m PID argument is not a valid number." << std::endl;
                      } else {
                          std::cerr << "Error: PID argument is not a valid number." << std::endl;
@@ -2129,7 +2153,7 @@ int main(int argc, char* argv[]) {
                      return 1; // someday we should probably have proper error codes instead of just 1 for everything
                             
                 } catch (const std::out_of_range& oor) {
-                     if (IsVirtualTerminalModeEnabled()) {
+                     if (virtualTerminalEnabled) {
                          std::cerr << "\033[1;31mError:\033[0m PID argument is out of range." << std::endl;
                      } else {
                          std::cerr << "Error: PID argument is out of range." << std::endl;
@@ -2142,10 +2166,14 @@ int main(int argc, char* argv[]) {
 				std::vector<std::string> trash;
 				trash.push_back("");
 				pids.push_back(static_cast<DWORD>(pid));// function requires it to be a list even if only 1 is passed
-				
-                PIDinspect(pids, trash);
+				 // snapshot of all processes in the system first so we can pass it to every function from there on
+			
+			  HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
+                PIDinspect(pids, trash, hshot);
+				CloseHandle(hshot);
             } else {
-                if (IsVirtualTerminalModeEnabled()) { // ugh i have to do this EVERY SINGLE TIME
+                if (virtualTerminalEnabled) { // ugh i have to do this EVERY SINGLE TIME
                     std::cerr << "\033[1;31mError:\033[0m --pid option requires an argument." << std::endl;
                 } else {
                     std::cerr << "Error: --pid option requires an argument." << std::endl;
@@ -2161,12 +2189,15 @@ int main(int argc, char* argv[]) {
         // check for process name if no recognized flags
         else if (arg[0] != '-') { // if it doesn't start with -- or -
             std::string procName = arg;
-            ProcInfos r = findMyProc(procName.c_str());
+			HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
+            ProcInfos r = findMyProc(procName.c_str(), hshot);
             if (!r.pids.empty()) {
                 std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
-                PIDinspect(dwPids, r.names);
+                PIDinspect(dwPids, r.names, hshot);
+				CloseHandle(hshot);
             } else {
-                if (IsVirtualTerminalModeEnabled()) {
+                if (virtualTerminalEnabled) {
                     std::cerr << "\033[1;31mError:\033[0m Could not find process with name " << procName << "." << std::endl;
                 } else {
                     std::cerr << "Error: Could not find process with name " << procName << "." << std::endl;
