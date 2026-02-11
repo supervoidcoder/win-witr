@@ -1504,9 +1504,17 @@ UPDATE: This is done now!!
 
     
     
-
+    // Build a PID→process map ONCE instead of walking 3 times
+    std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
     PROCESSENTRY32 pe32{};
     pe32.dwSize = sizeof(PROCESSENTRY32);
+    
+    if (Process32First(hSnapshot, &pe32)) {
+        do {
+            pidMap[pe32.th32ProcessID] = pe32;
+        } while (Process32Next(hSnapshot, &pe32));
+    }
+
     DWORD parentPid = 0;
     
    
@@ -1514,14 +1522,12 @@ UPDATE: This is done now!!
     DWORD currentProcessId = GetCurrentProcessId(); // checking our own process
     DWORD currentParentPid = 0;
 
-    if (Process32First(hSnapshot, &pe32)) { // here, we're gonna use the existing snapshot so it doesn't use another
-        do {
-            // it shouldn't harm performance, but even if it does, I want to get 
-            // the features done first before optimizing anything
-            if (pe32.th32ProcessID == currentProcessId) {
-                break;
-            }
-        } while (Process32Next(hSnapshot, &pe32));
+    // here, we're gonna use the existing snapshot so it doesn't use another
+    // it shouldn't harm performance, but even if it does, I want to get 
+    // the features done first before optimizing anything
+    auto currentIt = pidMap.find(currentProcessId);
+    if (currentIt != pidMap.end()) {
+        pe32 = currentIt->second;
     }
     
     DWORD targetpid = pid; // the function already passes pid into us, but 
@@ -1534,34 +1540,30 @@ UPDATE: This is done now!!
     bool found = false;
     while (pid != 0 && pid != 4) {
     found = false; 
-    if (Process32First(hSnapshot, &pe32)) {
-        do {
-            if (pe32.th32ProcessID == pid) {
-                // Without comments, this literally looks like alien gibberish so lemme explain
-              
-                ULONGLONG creationTime = GetProcessCreationTime(pid); // this stores the creation time of the CURRENT pid (not parent)
-                exeTimes.emplace_back(creationTime); // immediately stores the above to the list
-                exeName = WideToString(pe32.szExeFile); //this stores the NAME of the current pid, converted to something that the terminal won't choke and die on
-                exeNames.emplace_back(exeName); // this adds the above to the name list
-                pidNames.emplace_back(pid); // this adds the current pid (no need to store in var as already passed into if)
-                
-                parentPid = pe32.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
-                parentPids.emplace_back(pe32.th32ParentProcessID); // adds above to list
-                ULONGLONG parentTime = GetProcessCreationTime(parentPid); // this gets the creation time of that one
+    auto it = pidMap.find(pid);
+    if (it != pidMap.end()) {
+        const PROCESSENTRY32& entry = it->second;
+        // Without comments, this literally looks like alien gibberish so lemme explain
+      
+        ULONGLONG creationTime = GetProcessCreationTime(pid); // this stores the creation time of the CURRENT pid (not parent)
+        exeTimes.emplace_back(creationTime); // immediately stores the above to the list
+        exeName = WideToString(entry.szExeFile); //this stores the NAME of the current pid, converted to something that the terminal won't choke and die on
+        exeNames.emplace_back(exeName); // this adds the above to the name list
+        pidNames.emplace_back(pid); // this adds the current pid (no need to store in var as already passed into if)
+        
+        parentPid = entry.th32ParentProcessID; // this gets the pid of the PARENT pid (if there hopefully is one)
+        parentPids.emplace_back(entry.th32ParentProcessID); // adds above to list
+        ULONGLONG parentTime = GetProcessCreationTime(parentPid); // this gets the creation time of that one
 
-                if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
-                    // we can't be sure if the parent actually exists and windows isn't lying to us,
-                    // so always double check
-                        pid = 0; 
-                } else {
+        if (parentPid == 0 || parentPid == 4 || parentTime == 0 || parentTime >= creationTime) {
+            // we can't be sure if the parent actually exists and windows isn't lying to us,
+            // so always double check
+                pid = 0; 
+        } else {
 
-                    pid = parentPid;
-                }
-                found = true;
-                break;
-            }
-        } while (Process32Next(hSnapshot, &pe32));
-
+            pid = parentPid;
+        }
+        found = true;
     }
      
     if (!found) break;
@@ -1572,8 +1574,8 @@ UPDATE: This is done now!!
     // Checking if the parent is alive, because, well, since the target IS the parent, 
     // it must be alive.
     int children = 0; // i wonder what would happen if you could set an emoji as var name
-    if (Process32First(hSnapshot, &pe32)) {
-        do {
+    for (const auto& pair : pidMap) {
+        const PROCESSENTRY32& entry = pair.second;
             
                // this time, our target pid is already stored at the very top of our list.
                // this means we don't have to add target pid stuff.
@@ -1581,16 +1583,16 @@ UPDATE: This is done now!!
                // the previous loop, since emplacing to the front requires shifting the entire list
                // and therefore is inefficient, robbing us of a couple milliseconds of precious cpu time :(
 
-                if (pe32.th32ParentProcessID == targetpid) {
-                    exeName = WideToString(pe32.szExeFile); // this stores the name of our pid we're looking at in a var
+                if (entry.th32ParentProcessID == targetpid) {
+                    exeName = WideToString(entry.szExeFile); // this stores the name of our pid we're looking at in a var
                     exeNames.emplace(exeNames.begin(), exeName); // this adds this to the front of the list
                     // in this case, we are adding stuff to the front of the list, since we're looking at children
                     // you might've noticed this doesn't have an emplace_front() like emplace_back() since 
                     // it's inefficient and the creators of the vector lib didn't do it
-                    pidNames.emplace(pidNames.begin(), pe32.th32ProcessID);
-                    ULONGLONG childTime = GetProcessCreationTime(pe32.th32ProcessID);
+                    pidNames.emplace(pidNames.begin(), entry.th32ProcessID);
+                    ULONGLONG childTime = GetProcessCreationTime(entry.th32ProcessID);
                     exeTimes.emplace(exeTimes.begin(), childTime); // we don't even use this but we need to keep all the vectors the same length
-                    parentPids.emplace(parentPids.begin(), pe32.th32ProcessID); // just fill it up, we aren't using it
+                    parentPids.emplace(parentPids.begin(), entry.th32ProcessID); // just fill it up, we aren't using it
                     children++; // keeps track of how many children we have (that sounds wrong when you say it)
 
                 }
@@ -1598,8 +1600,6 @@ UPDATE: This is done now!!
 
                 
             
-        } while (Process32Next(hSnapshot, &pe32));
-
     }
 
     
