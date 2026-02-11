@@ -1989,11 +1989,11 @@ struct ProcInfos {
     std::vector<int>         pids;
 }
 
-std::vector<std::vector<std::string>, std::vector<int>> findMyProc(const char *procname) {
+ProcInfos findMyProc(const char *procname) {
 
   HANDLE hSnapshot;
   PROCESSENTRY32 pe;
-  ProcResult result
+  ProcResult result;
   BOOL hResult;
   
 
@@ -2025,7 +2025,7 @@ std::vector<std::vector<std::string>, std::vector<int>> findMyProc(const char *p
 
   // closes an open handle (CreateToolhelp32Snapshot)
   CloseHandle(hSnapshot);
-  return pids, names;
+  return result;
 }
 // The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html , modified simply to use WideToString for the process name comparison among other things.
 // Thanks!
@@ -2144,7 +2144,7 @@ int main(int argc, char* argv[]) {
         // check for process name if no recognized flags
         else if (arg[0] != '-') { // if it doesn't start with -- or -
             std::string procName = arg;
-            ProcResult r = findMyProc(procName.c_str());
+            ProcInfos r = findMyProc(procName.c_str());
             if (!r.pids.empty()) {
                 std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
                 PIDinspect(dwPids, r.names);
