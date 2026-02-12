@@ -244,28 +244,28 @@ jobs:
           Write-Host "Performance comparison:" -ForegroundColor Yellow
           
           # C++ vs Go
-          if ($cppTotal -gt 0) {
+          if ($cppTotal -gt 0 -and $goTotal -gt 0) {
             $cppVsGoTimes = [Math]::Round($goTotal / $cppTotal, 1)
-            if ($cppVsGoTimes -gt 1) {
+            if ($cppVsGoTimes -ge 1.1) {
               Write-Host "  C++ is $($cppVsGoTimes)x faster than Go" -ForegroundColor Green
-            } elseif ($cppVsGoTimes -lt 1) {
+            } elseif ($cppVsGoTimes -le 0.9) {
               $goVsCppTimes = [Math]::Round($cppTotal / $goTotal, 1)
-              Write-Host "  C++ is $($goVsCppTimes)x slower than Go" -ForegroundColor Red
+              Write-Host "  Go is $($goVsCppTimes)x faster than C++" -ForegroundColor Red
             } else {
-              Write-Host "  C++ and Go have equal performance" -ForegroundColor Yellow
+              Write-Host "  C++ and Go have similar performance" -ForegroundColor Yellow
             }
           }
           
           # C++ vs Rust
-          if ($hasRust -and $cppTotal -gt 0) {
+          if ($hasRust -and $cppTotal -gt 0 -and $rustTotal -gt 0) {
             $cppVsRustTimes = [Math]::Round($rustTotal / $cppTotal, 1)
-            if ($cppVsRustTimes -gt 1) {
+            if ($cppVsRustTimes -ge 1.1) {
               Write-Host "  C++ is $($cppVsRustTimes)x faster than Rust" -ForegroundColor Green
-            } elseif ($cppVsRustTimes -lt 1) {
+            } elseif ($cppVsRustTimes -le 0.9) {
               $rustVsCppTimes = [Math]::Round($cppTotal / $rustTotal, 1)
-              Write-Host "  C++ is $($rustVsCppTimes)x slower than Rust" -ForegroundColor Red
+              Write-Host "  Rust is $($rustVsCppTimes)x faster than C++" -ForegroundColor Red
             } else {
-              Write-Host "  C++ and Rust have equal performance" -ForegroundColor Yellow
+              Write-Host "  C++ and Rust have similar performance" -ForegroundColor Yellow
             }
           }
           Write-Host ""
