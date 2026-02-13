@@ -1548,13 +1548,16 @@ BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam) {
                 GetWindowTextW(hwnd, buffer.data(), length + 1);
                 std::wstring wtitle(buffer.data());
                 
+                // Check if this is a main window (no owner and not a tool window)
+                bool isMainWindow = (GetWindow(hwnd, GW_OWNER) == NULL && (GetWindowLongPtr(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) == 0);
+                
                 // Only update if we don't have a title yet, or if this is a main window
-                if (data->windowTitle.empty() || (GetWindow(hwnd, GW_OWNER) == NULL && (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) == 0)) {
+                if (data->windowTitle.empty() || isMainWindow) {
                     data->windowTitle = WideToString(wtitle);
                     data->mainWindow = hwnd;
                     
-                    // If this appears to be the main window, stop searching
-                    if (GetWindow(hwnd, GW_OWNER) == NULL && (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) == 0) {
+                    // If this is the main window, stop searching
+                    if (isMainWindow) {
                         return FALSE;
                     }
                 }
