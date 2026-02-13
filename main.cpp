@@ -1586,7 +1586,7 @@ return WideToString(stringBuffer);
 } else {
     auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
     if (!queryInfo) {
-        v
+        return "";
     }
 
     ULONG_PTR peb32Address = 0;
@@ -2108,7 +2108,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
 	
 	
 	if (virtualTerminalEnabled) {
-		if (!process == "") { 
+		if (!(process == "")) { 
 		std::cout << "\033[34mTarget:\033[0m " << procName << "\033[0m" << std::endl;
 		std::cout << "\033[34mProcess:\033[0m " << process << "\033[90m (pid " << std::to_string(pid) << ")\033[0m" << std::endl;
 		} else {
