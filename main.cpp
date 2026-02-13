@@ -1564,7 +1564,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, s
 
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x38, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x60, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
     return "";
 }
 
@@ -1601,7 +1601,7 @@ return WideToString(stringBuffer);
     }
 
     UNICODE_STRING32 cmdLStruct32{};
-    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x24, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x50, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
        return "";
     }
 
@@ -1642,7 +1642,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, s
 
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x24, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x50, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
     return "";
 }
 
@@ -1685,7 +1685,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, s
 
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x24, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x50, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
     return "";
 }
 
@@ -1741,7 +1741,7 @@ return WideToString(stringBuffer);
         }
 
         UNICODE_STRING64 cmdLStruct64;
-        status = readMem64(targetHandle, procParamPtr64 + 0x38, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
+        status = readMem64(targetHandle, procParamPtr64 + 0x60, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
         if (status != 0) {
             if (openedHandle) CloseHandle(openedHandle);
            return "";
@@ -1800,7 +1800,7 @@ if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, s
 
 UNICODE_STRING cmdLStruct;
 SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x38, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
+if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x60, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
    return "";
 }
 
@@ -1838,7 +1838,7 @@ return WideToString(stringBuffer);
     }
 
     UNICODE_STRING32 cmdLStruct32{};
-    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x24, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
+    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x50, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
        return "";
     }
 
