@@ -2070,6 +2070,7 @@ ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
  
 
 int main(int argc, char* argv[]) {
+	SetConsoleTitle(TEXT("Windows - Why Is This Running?"));
     SetConsoleOutputCP(CP_UTF8);
     virtualTerminalEnabled = IsVirtualTerminalModeEnabled();
     for (int i = 0; i < argc; ++i) {
