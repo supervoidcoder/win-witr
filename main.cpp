@@ -2108,7 +2108,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
 	
 	
 	if (virtualTerminalEnabled) {
-		if (!(process == "")) { 
+		if (!process.empty()) { 
 		std::cout << "\033[34mTarget:\033[0m " << procName << "\033[0m" << std::endl;
 		std::cout << "\033[34mProcess:\033[0m " << process << "\033[90m (pid " << std::to_string(pid) << ")\033[0m" << std::endl;
 		} else 
@@ -2119,7 +2119,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
 		std::cout << "\033[34mProcess:\033[0m " << procName << "\033[90m (pid " << std::to_string(pid) << ")\033[0m" << std::endl;
 		}
 	} else {
-			if (!process == "") { 
+			if (!process.empty()) { 
 		std::cout << "Target: " << procName << std::endl;
 		std::cout << "Process: " << process << " (pid " << std::to_string(pid) << ")" << std::endl;
 		} else {
@@ -2130,6 +2130,7 @@ void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& 
 		std::cout << "Process: " << procName << " (pid " << std::to_string(pid) << ")" << std::endl;
 		}
 		
+	}
 	}
 	
 
