@@ -4,4 +4,4 @@ main.obj
 win-witr.obj
 main.pdb
 win-witr.pdb
-vc140.pdb
+vc140.pdb_codeql_detected_source_root
