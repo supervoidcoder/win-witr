@@ -1525,340 +1525,64 @@ return WideToString(stringBuffer);
 4234234
 */
 
+// Helper struct for EnumWindows callback
+struct EnumWindowsCallbackData {
+    DWORD processId;
+    std::string windowTitle;
+    HWND mainWindow;
+};
+
+// Callback function for EnumWindows
+BOOL CALLBACK EnumWindowsCallback(HWND hwnd, LPARAM lParam) {
+    auto* data = reinterpret_cast<EnumWindowsCallbackData*>(lParam);
+    
+    DWORD windowProcessId = 0;
+    GetWindowThreadProcessId(hwnd, &windowProcessId);
+    
+    if (windowProcessId == data->processId) {
+        // Check if the window is visible
+        if (IsWindowVisible(hwnd)) {
+            int length = GetWindowTextLengthW(hwnd);
+            if (length > 0) {
+                std::vector<wchar_t> buffer(length + 1);
+                GetWindowTextW(hwnd, buffer.data(), length + 1);
+                std::wstring wtitle(buffer.data());
+                
+                // Only update if we don't have a title yet, or if this is a main window
+                if (data->windowTitle.empty() || (GetWindow(hwnd, GW_OWNER) == NULL && (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) == 0)) {
+                    data->windowTitle = WideToString(wtitle);
+                    data->mainWindow = hwnd;
+                    
+                    // If this appears to be the main window, stop searching
+                    if (GetWindow(hwnd, GW_OWNER) == NULL && (GetWindowLong(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) == 0) {
+                        return FALSE;
+                    }
+                }
+            }
+        }
+    }
+    
+    return TRUE; // Continue enumeration
+}
+
 std::string GetWindowTitle(HANDLE hproc) {
-	// in this function, we will get the window title of the program
-	// by once again readding the peb
-	// it will replace the "Process" entry because 
-	// currently its a bit redundant
-	// this will be a bit more helpful while still being basically instant
-	// and if its a headless program it doesn't matter much since its going to be the .exe name either way
-	// which would be the same as not reading the PEB so better to try than nothing 
-#ifdef _M_X64
-
-
-BOOL isWow64 = FALSE;
-if (!IsWow64Process(hproc, &isWow64)) {
-    return ""; // in this case, we don't need to return an error code if it fails, we just silently fall back
-	// to the existing target name we already had so it doesn't matter much
-}
-bool isWoW64 = isWow64;
-
-if (!isWoW64) {
-
-typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
-auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
-if (!queryInfo) {
-    return "";
-}
-
-PROCESS_BASIC_INFORMATION pbi;
-if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
-
-    return "";
-}
-
-PVOID procParamPtr = nullptr;
-if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    return "";
-}
-
-UNICODE_STRING cmdLStruct;
-SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0xB0, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    return "";
-}
-
-if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
-    return "";
-}
-
-size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
-std::vector<wchar_t> buffer(wchar_count + 1, 0);
-if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
-{
-    return "";
-}
-
-std::wstring stringBuffer = buffer.data();
-return WideToString(stringBuffer);
-
-
-} else {
-    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
-    if (!queryInfo) {
-        return "";
-    }
-
-    ULONG_PTR peb32Address = 0;
-    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
-    if (status != 0 || peb32Address == 0) {
-        return "";
-    }
-
-    ULONG procParamPtr32 = 0;
-    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
-        return "";
-    }
-
-    UNICODE_STRING32 cmdLStruct32{};
-    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x70, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
-       return "";
-    }
-
-    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
-        return "";
-    }
-
-    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
-    std::vector<wchar_t> buffer(wchar_count + 1, 0);
-    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
-    {
-        return "";
-    }
-
-    std::wstring stringBuffer = buffer.data();
-    return WideToString(stringBuffer);
-}
- #elif defined(_M_IX86) 
-     BOOL areWeWoW64 = FALSE;
-    IsWow64Process(GetCurrentProcess(), &areWeWoW64);
-    if (!areWeWoW64) {
-        typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
-auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
-if (!queryInfo) {
-    return "";
-}
-
-PROCESS_BASIC_INFORMATION pbi;
-if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
-
-    return "";
-}
-
-PVOID procParamPtr = nullptr;
-if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
-   return "";
-}
-
-UNICODE_STRING cmdLStruct;
-SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    return "";
-}
-
-if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
-    return "";
-}
-
-size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
-std::vector<wchar_t> buffer(wchar_count + 1, 0);
-if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
-{
-    return "";
-}
-
-std::wstring stringBuffer = buffer.data();
-return WideToString(stringBuffer);
-} else {
-
-    BOOL targetIsWow64 = FALSE;
+    // Get the window title by enumerating all windows and finding ones that belong to this process
+    // This will replace the "Process" entry to make it more informative
+    // If it's a headless program, we'll fall back to the process name
     
-    IsWow64Process(hproc, &targetIsWow64);
-    if (targetIsWow64) {
-
-   typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
-auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
-if (!queryInfo) {
-    return "";
-}
-
-PROCESS_BASIC_INFORMATION pbi;
-if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
-
-    return "";
-}
-
-PVOID procParamPtr = nullptr;
-if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x10, &procParamPtr, sizeof(PVOID), NULL)) {
-    return "";
-}
-
-UNICODE_STRING cmdLStruct;
-SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0x70, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-    return "";
-}
-
-if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
-    return "";
-}
-
-size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
-std::vector<wchar_t> buffer(wchar_count + 1, 0);
-if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
-{
-    return "";
-}
-
-std::wstring stringBuffer = buffer.data();
-return WideToString(stringBuffer);
-
-    } else {
-        
-        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
-        auto queryInfo64 = (pNtWow64QueryInformationProcess64)GetProcAddress(ntdll, "NtWow64QueryInformationProcess64");
-        auto readMem64 = (pNtWow64ReadVirtualMemory64)GetProcAddress(ntdll, "NtWow64ReadVirtualMemory64");
-
-        if (!queryInfo64 || !readMem64) {
-            return "";
-        }
-
-        HANDLE targetHandle = hproc;
-        HANDLE openedHandle = NULL;
-        DWORD targetPid = 0;
-        if (hproc != NULL) {
-            targetPid = GetProcessId(hproc);
-        }
-        if (targetPid != 0) {
-            openedHandle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, targetPid);
-            if (openedHandle) targetHandle = openedHandle;
-        }
-
-        PROCESS_BASIC_INFORMATION64 pbi64{};
-        ULONG returnLen = 0;
-        NTSTATUS status = queryInfo64(targetHandle, ProcessBasicInformation, &pbi64, sizeof(pbi64), &returnLen);
-        ULONG64 peb64Address = pbi64.PebBaseAddress;
-        if (status != 0 || peb64Address == 0) {
-            if (openedHandle) CloseHandle(openedHandle);
-           return "";
-        }
-
-        ULONG64 procParamPtr64 = 0;
-        status = readMem64(targetHandle, peb64Address + 0x20, &procParamPtr64, sizeof(procParamPtr64), NULL);
-        if (status != 0) {
-            if (openedHandle) CloseHandle(openedHandle);
-           return "";
-        }
-
-        UNICODE_STRING64 cmdLStruct64;
-        status = readMem64(targetHandle, procParamPtr64 + 0xB0, &cmdLStruct64, sizeof(cmdLStruct64), NULL);
-        if (status != 0) {
-            if (openedHandle) CloseHandle(openedHandle);
-           return "";
-        }
-
-        if (cmdLStruct64.Length == 0 || (cmdLStruct64.Length % sizeof(wchar_t)) != 0 || cmdLStruct64.Length > 65534) {
-            if (openedHandle) CloseHandle(openedHandle);
-            return "";
-        }
-
-        size_t wchar_count = cmdLStruct64.Length / sizeof(wchar_t);
-        std::vector<wchar_t> buffer(wchar_count + 1, 0);
-        status = readMem64(targetHandle, cmdLStruct64.Buffer, buffer.data(), cmdLStruct64.Length, NULL);
-        if (status != 0) {
-            if (openedHandle) CloseHandle(openedHandle);
-            return "";
-        }
-
-        if (openedHandle) CloseHandle(openedHandle);
-        std::wstring wstr(buffer.data());
-        return WideToString(wstr);
+    DWORD pid = GetProcessId(hproc);
+    if (pid == 0) {
+        return ""; // Failed to get process ID
+    }
     
-
-        
-    }
-
-}
- #elif defined(_M_ARM64) 
-
-
-BOOL isWow64 = FALSE;
-if (!IsWow64Process(hproc, &isWow64)) {
-    return "";
-}
-bool isWoW64 = isWow64;
-
-if (!isWoW64) {
-
-typedef NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
-auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
-
-if (!queryInfo) {
-    return "";
-}
-
-PROCESS_BASIC_INFORMATION pbi;
-if (queryInfo(hproc, ProcessBasicInformation, &pbi, sizeof(pbi), NULL) != 0) {
-
-    return "";
-}
-
-PVOID procParamPtr = nullptr;
-if (!ReadProcessMemory(hproc, (BYTE*)pbi.PebBaseAddress + 0x20, &procParamPtr, sizeof(PVOID), NULL)) {
-    return "";
-}
-
-UNICODE_STRING cmdLStruct;
-SIZE_T bytesRead2 = 0;
-if (!ReadProcessMemory(hproc, (BYTE*)procParamPtr + 0xB0, &cmdLStruct, sizeof(cmdLStruct), &bytesRead2)) {
-   return "";
-}
-
-if (cmdLStruct.Length == 0 || (cmdLStruct.Length % sizeof(wchar_t)) != 0 || cmdLStruct.Length > 65534) {
-    return "";
-}
-
-size_t wchar_count = cmdLStruct.Length / sizeof(wchar_t);
-std::vector<wchar_t> buffer(wchar_count + 1, 0);
-if (!ReadProcessMemory(hproc, cmdLStruct.Buffer, buffer.data(), cmdLStruct.Length, NULL))
-{
-    return "";
-}
-
-std::wstring stringBuffer = buffer.data();
-return WideToString(stringBuffer);
-
-
-} else {
-
-    auto queryInfo = (pNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
-    if (!queryInfo) {
-        return "";
-    }
-
-    ULONG_PTR peb32Address = 0;
-    NTSTATUS status = queryInfo(hproc, ProcessWow64Information, &peb32Address, sizeof(peb32Address), NULL);
-    if (status != 0 || peb32Address == 0) {
-        return "";
-    }
-
-    ULONG procParamPtr32 = 0;
-    if (!ReadProcessMemory(hproc, (BYTE*)peb32Address + 0x10, &procParamPtr32, sizeof(procParamPtr32), NULL)) {
-       return "";
-    }
-
-    UNICODE_STRING32 cmdLStruct32{};
-    if (!ReadProcessMemory(hproc, (BYTE*)(ULONG_PTR)procParamPtr32 + 0x70, &cmdLStruct32, sizeof(cmdLStruct32), NULL)) {
-       return "";
-    }
-
-    if (cmdLStruct32.Length == 0 || (cmdLStruct32.Length % sizeof(wchar_t)) != 0 || cmdLStruct32.Length > 65534) {
-        return "";
-    }
-
-    size_t wchar_count = cmdLStruct32.Length / sizeof(wchar_t);
-    std::vector<wchar_t> buffer(wchar_count + 1, 0);
-    if (!ReadProcessMemory(hproc, (PVOID)(ULONG_PTR)cmdLStruct32.Buffer, buffer.data(), cmdLStruct32.Length, NULL))
-    {
-      return "";
-    }
-
-    std::wstring stringBuffer = buffer.data();
-    return WideToString(stringBuffer);
-}
-#else 
-   return "";
-#endif
+    EnumWindowsCallbackData data;
+    data.processId = pid;
+    data.mainWindow = NULL;
+    
+    // Enumerate all top-level windows
+    EnumWindows(EnumWindowsCallback, reinterpret_cast<LPARAM>(&data));
+    
+    return data.windowTitle;
 }
 
 void PrintAncestry(DWORD pid, HANDLE hSnapshot, const std::unordered_map<DWORD, PROCESSENTRY32>& pidMap) {
