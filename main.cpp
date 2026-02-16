@@ -2072,18 +2072,19 @@ ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
     virtualTerminalEnabled = IsVirtualTerminalModeEnabled();
-    for (int i = 0; i < argc; ++i) {
-        std::string arg = argv[i];
+    std::vector<std::string> arguments(argv, argv + argc);
+    for (size_t i = 0; i < arguments.size(); ++i) {
+        std::string arg = arguments[i];
 
         
-        if (i == 0 && argc > 1) {
+        if (i == 0 && arguments.size() > 1) {
             continue; 
         }
         
          
          
 
-        if (argc == 1 || std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help") {
+        if (arguments.size() == 1 || arguments[1] == "-h" || arguments[1] == "--help") {
             if (!forkAuthor.empty()) {
                 std::cout << "\nwin-witr - Why is this running? Windows version by supervoidcoder. Fork by " << forkAuthor << std::endl;
             } else {
@@ -2130,9 +2131,9 @@ int main(int argc, char* argv[]) {
         }
 
         if (arg == "--pid") {
-            if (i + 1 < argc) {
+            if (i + 1 < arguments.size()) {
                 
-                std::string pidStr = argv[i + 1]; // never increment the actual variable unless you're actually trying to find the next argument, otherwise 
+                std::string pidStr = arguments[i + 1]; // never increment the actual variable unless you're actually trying to find the next argument, otherwise 
                                                   // skipping arguments will happen and can crash if there is, in fact, no next argument.
 
                 int pid = 0;    
