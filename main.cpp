@@ -1745,7 +1745,8 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot) { // ooh guys look i'm in the void
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot, std::vector<bool>& statuses, int related,   ) { 
+//^^^ ooh guys look i'm in the void
     DWORD pid = pids[0];
     std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
     PROCESSENTRY32 pe32{};
