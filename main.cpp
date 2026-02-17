@@ -2068,6 +2068,26 @@ ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 }
 // The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html, modified simply to use WideToString for the process name comparison among other things.
 // Thanks!
+
+std::vector<std::string> normalizeArgs (std::vector<std::string>& args) {
+// flags could be -, --, or /. heck, 
+	for i in args.size() {
+		if (args.[i].at(0) == "/") {
+args[i].erase(0, 1); } else {
+		if (args[i].at(0) == "-") {
+			if (args[i].at(1) == "-") // i could've done stats_with ("--") too but i feel like it takes more performance
+				// all this arg stuff probably steals milliseconds unfortunately
+			{
+				args[i].erase(0, 2);
+					} else {
+				args[i].erase(0, 1);
+			}
+		}
+		}
+			
+		
+}
+
  
 
 int main(int argc, char* argv[]) {
@@ -2075,17 +2095,18 @@ int main(int argc, char* argv[]) {
     virtualTerminalEnabled = IsVirtualTerminalModeEnabled();
     std::vector<std::string> arguments(argv, argv + argc);
     for (size_t i = 0; i < arguments.size(); ++i) {
-        std::string arg = arguments[i];
+        std::vector<std::string> args = normalizeArgs(arguments);
+		
 
         
-        if (i == 0 && arguments.size() > 1) {
+        if (i == 0 && args.size() > 1) {
             continue; 
         }
         
          
          
 
-        if (arguments.size() == 1 || arguments[1] == "-h" || arguments[1] == "--help") {
+        if (args.size() == 1 || args[1] == "h" || args[1] == "help") {
             if (!forkAuthor.empty()) {
                 std::cout << "\nwin-witr - Why is this running? Windows version by supervoidcoder. Fork by " << forkAuthor << std::endl;
             } else {
@@ -2126,15 +2147,15 @@ int main(int argc, char* argv[]) {
         }
 
 
-        if (arg == "-v" || arg == "--version") {
+        if (args[2] == "v" || args[2] == "version") {
             std::cout << "\nwin-witr " << version << std::endl;
             return 0;
         }
 
-        if (arg == "--pid") {
-            if (i + 1 < arguments.size()) {
+        if (args[2] == "pid") {
+            if (i + 1 < args.size()) {
                 
-                std::string pidStr = arguments[i + 1]; // never increment the actual variable unless you're actually trying to find the next argument, otherwise 
+                std::string pidStr = args[i + 1]; // never increment the actual variable unless you're actually trying to find the next argument, otherwise 
                                                   // skipping arguments will happen and can crash if there is, in fact, no next argument.
 
                 int pid = 0;    
@@ -2189,7 +2210,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         // check for process name if no recognized flags
-        else if (arg[0] != '-') { // if it doesn't start with -- or -
+        else {
             std::string procName = arg;
 			HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
