@@ -184,6 +184,10 @@ std::unordered_map<int, std::string> errorHints = {
     
 };
 
+struct Statuses {
+bool verbose;
+// will probably add more later
+};
 
 bool EnableDebugPrivilege() {
     HANDLE hToken;
@@ -1745,7 +1749,7 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot, std::vector<bool>& statuses, int related,   ) { 
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot, Statuses stats, int related,   ) { 
 //^^^ ooh guys look i'm in the void
     DWORD pid = pids[0];
     std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
@@ -2069,24 +2073,20 @@ ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 // The above function is taken from https://cocomelonc.github.io/pentest/2021/09/29/findmyprocess.html, modified simply to use WideToString for the process name comparison among other things.
 // Thanks!
 
-std::vector<std::string> normalizeArgs (std::vector<std::string>& args) {
-// flags could be -, --, or /. heck, 
-	for i in args.size() {
-		if (args.[i].at(0) == "/") {
-args[i].erase(0, 1); } else {
-		if (args[i].at(0) == "-") {
-			if (args[i].at(1) == "-") // i could've done stats_with ("--") too but i feel like it takes more performance
-				// all this arg stuff probably steals milliseconds unfortunately
-			{
-				args[i].erase(0, 2);
-					} else {
-				args[i].erase(0, 1);
-			}
-		}
-		}
-			
-		
-}
+std::vector<std::string> normalizeArgs(std::vector<std::string>& args) {
+	// this function can seem a little obfuscated so let me help
+    for (size_t i = 0; i < args.size(); i++) { 
+        if (args[i].at(0) == "/") { // if it starts with a /
+            args[i].at(0) = "-"; // then set it to - to normalize the argument, so /help turns into -help
+        } else if (args[i].at(0) == "-") { // if it starts with a -
+            if (args[i].at(1) == "-") { // then check if the person put another - like --help
+                args[i].erase(0, 1); // if so then delete first  char and it turns into -help
+            } else {
+                // do nothing
+            }
+        }
+    }
+    return args;
 }
 
  
@@ -2095,6 +2095,9 @@ int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
     virtualTerminalEnabled = IsVirtualTerminalModeEnabled();
     std::vector<std::string> arguments(argv, argv + argc);
+	Statuses s;
+				
+	s.verbose = false; // for now this don't do anything
     for (size_t i = 0; i < arguments.size(); ++i) {
         std::vector<std::string> args = normalizeArgs(arguments);
 		
@@ -2107,7 +2110,7 @@ int main(int argc, char* argv[]) {
          
          
 
-        if (args.size() == 1 || args[1] == "h" || args[1] == "help") {
+        if (args.size() == 1 || args[1] == "-h" || args[1] == "-help") {
             if (!forkAuthor.empty()) {
                 std::cout << "\nwin-witr - Why is this running? Windows version by supervoidcoder. Fork by " << forkAuthor << std::endl;
             } else {
@@ -2148,12 +2151,12 @@ int main(int argc, char* argv[]) {
         }
 
 
-        if (args[2] == "v" || args[2] == "version") {
+        if (args[1] == "-v" || args[1] == "-version") {
             std::cout << "\nwin-witr " << version << std::endl;
             return 0;
         }
 
-        if (args[2] == "pid") {
+        if (args[1] == "-pid") {
             if (i + 1 < args.size()) {
                 
                 std::string pidStr = args[i + 1]; // never increment the actual variable unless you're actually trying to find the next argument, otherwise 
@@ -2194,7 +2197,8 @@ int main(int argc, char* argv[]) {
 			
 			  HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
-                PIDinspect(pids, trash, hshot);
+				
+                PIDinspect(pids, trash, hshot, s, 0);
 				CloseHandle(hshot);
             } else {
                 if (virtualTerminalEnabled) { // ugh i have to do this EVERY SINGLE TIME
@@ -2212,13 +2216,13 @@ int main(int argc, char* argv[]) {
         }
         // check for process name if no recognized flags
         else {
-            std::string procName = arg;
+            std::string procName = args[1];
 			HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
             ProcInfos r = findMyProc(procName.c_str(), hshot);
             if (!r.pids.empty()) {
                 std::vector<DWORD> dwPids(r.pids.begin(), r.pids.end());
-                PIDinspect(dwPids, r.names, hshot);
+                PIDinspect(dwPids, r.names, hshot, s, 0);
 				CloseHandle(hshot);
             } else {
                 if (virtualTerminalEnabled) {
