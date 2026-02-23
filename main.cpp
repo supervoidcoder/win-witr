@@ -1749,7 +1749,7 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 
-void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot, Statuses stats, int related,   ) { 
+void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot, Statuses stats, int related   ) { 
 //^^^ ooh guys look i'm in the void
     DWORD pid = pids[0];
     std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
@@ -2076,10 +2076,10 @@ ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 std::vector<std::string> normalizeArgs(std::vector<std::string>& args) {
 	// this function can seem a little obfuscated so let me help
     for (size_t i = 0; i < args.size(); i++) { 
-        if (args[i].at(0) == "/") { // if it starts with a /
-            args[i].at(0) = "-"; // then set it to - to normalize the argument, so /help turns into -help
-        } else if (args[i].at(0) == "-") { // if it starts with a -
-            if (args[i].at(1) == "-") { // then check if the person put another - like --help
+        if (args[i].at(0) == '/') { // if it starts with a /
+            args[i].at(0) = '-'; // then set it to - to normalize the argument, so /help turns into -help
+        } else if (args[i].at(0) == '-') { // if it starts with a -
+            if (args[i].at(1) == '-') { // then check if the person put another - like --help
                 args[i].erase(0, 1); // if so then delete first  char and it turns into -help
             } else {
                 // do nothing
