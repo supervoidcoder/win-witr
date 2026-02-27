@@ -2249,7 +2249,7 @@ int main(int argc, char* argv[]) {
             }
         }
 		} else {
-std::cout << "Looks up a process based on the name. The search is case-insensitive, and you do not need to type the .exe extension. If there are multiple processes with similar names, it will show them to you under \"Related Processes\" along with their PIDs so you can manually search up each one using the --pid flag.
+std::cout << "Looks up a process based on the name. The search is case-insensitive, and you do not need to type the .exe extension. If there are multiple processes with similar names, it will show them to you under \"Related Processes\" along with their PIDs so you can manually search up each one using the --pid flag.\n";
 			
 		}
     }
