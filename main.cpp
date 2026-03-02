@@ -2089,10 +2089,7 @@ std::vector<std::string> normalizeArgs(std::vector<std::string>& args) {
     return args;
 }
 
- bool contains(const std::vector<std::string>& v, const std::string& value) {
-    return std::find(v.begin(), v.end(), value) != v.end();
-}
-// contains function that checks if the stringy vector contains the thing its self explanatory
+ 
 
 int main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
@@ -2153,21 +2150,13 @@ int main(int argc, char* argv[]) {
             return 0; // exit after printing help because it might try to process -help as a process name otherwise
         }
 
-// at this point, if help exists but is not the first argument we can assume the user is asking about a specific flag 
-		bool help = contains(args, "-help");
-		
+
         if (args[1] == "-v" || args[1] == "-version") {
-			if (!help) {
             std::cout << "\nwin-witr " << version << std::endl;
-			} else {
-			std::cout << "Shows the version number of win-witr. If it says \"dev-build\", it means you compiled it yourself without a version number compiler environment variable.\n";
-				
-			}
             return 0;
         }
 
         if (args[1] == "-pid") {
-			if (!help) { 
             if (i + 1 < args.size()) {
                 
                 std::string pidStr = args[i + 1]; // never increment the actual variable unless you're actually trying to find the next argument, otherwise 
@@ -2224,14 +2213,9 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
             return 0;
-			}
-			else { 
-				std::cout << "Looks up a specific process based on the Process ID (PID) and returns information such as RAM usage, process ancestry, listening ports, and more.\n";
-				
-        }}
+        }
         // check for process name if no recognized flags
         else {
-			if (!help) { 
             std::string procName = args[1];
 			HANDLE hshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 			  if (INVALID_HANDLE_VALUE == hshot) {return 1;}
@@ -2248,10 +2232,6 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
-		} else {
-std::cout << "Looks up a process based on the name. The search is case-insensitive, and you do not need to type the .exe extension. If there are multiple processes with similar names, it will show them to you under \"Related Processes\" along with their PIDs so you can manually search up each one using the --pid flag.\n";
-			
-		}
     }
     return 0;
     
