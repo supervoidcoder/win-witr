@@ -2080,7 +2080,7 @@ std::vector<std::string> normalizeArgs(std::vector<std::string>& args) {
         if (args[i].at(0) == '/') { // if it starts with a /
             args[i].at(0) = '-'; // then set it to - to normalize the argument, so /help turns into -help
         } else if (args[i].at(0) == '-') { // if it starts with a -
-            if (args[i].at(1) == '-') { // then check if the person put another - like --help
+            if (args[i].size() > 1 && args[i].at(1) == '-') { // then check if the person put another - like --help
                 args[i].erase(0, 1); // if so then delete first  char and it turns into -help
             } else {
                 // do nothing
