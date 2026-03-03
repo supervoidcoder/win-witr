@@ -2076,6 +2076,7 @@ ProcInfos findMyProc(const char *procname, HANDLE hSnapshot) {
 std::vector<std::string> normalizeArgs(std::vector<std::string>& args) {
 	// this function can seem a little obfuscated so let me help
     for (size_t i = 0; i < args.size(); i++) { 
+		if (args[i].empty()) continue; // if arg empty then program kaboom but i'm not sure how'd you pass an empty arg
         if (args[i].at(0) == '/') { // if it starts with a /
             args[i].at(0) = '-'; // then set it to - to normalize the argument, so /help turns into -help
         } else if (args[i].at(0) == '-') { // if it starts with a -
