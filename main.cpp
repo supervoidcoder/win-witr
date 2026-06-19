@@ -186,6 +186,7 @@ std::unordered_map<int, std::string> errorHints = {
 
 struct Statuses {
 bool verbose;
+bool all;
 // will probably add more later
 };
 
@@ -1750,6 +1751,8 @@ void FindProcessPorts(DWORD targetPid) {
 
 
 void PIDinspect(const std::vector<DWORD>& pids, const std::vector<std::string>& names, HANDLE hshot, Statuses stats, int related   ) { 
+	if (!stats.all) {
+		
 //^^^ ooh guys look i'm in the void
     DWORD pid = pids[0];
     std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
@@ -2013,6 +2016,270 @@ std::string FRAM = ""; // fram means formatted ram, i'm so creative at var namin
 
     CloseHandle(hProcess);
     
+} else {
+DWORD pid = pids[0];
+    std::unordered_map<DWORD, PROCESSENTRY32> pidMap;
+    PROCESSENTRY32 pe32{};
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+    if (Process32First(hshot, &pe32)) {
+        do {
+            pidMap.emplace(pe32.th32ProcessID, pe32);
+        } while (Process32Next(hshot, &pe32));
+    }
+	std::string procName = GetProcessNameFromPid(pid, hshot);
+	if (virtualTerminalEnabled) {
+		if (procName == ""){
+			std::cout << "\033[34mTarget:\033[0m N/A\n\033[34mProcess:\033[0m N/A\n";
+		} else {
+		std::cout << "\033[34mTarget:\033[0m " << procName << "\033[0m" << std::endl;
+		std::cout << "\033[34mProcess:\033[0m " << procName << "\033[90m (pid " << std::to_string(pid) << ")\033[0m" << std::endl;
+		}
+	} else {
+		if (procName == ""){
+			std::cout << "Target: N/A\nProcess: N/A\n";
+				} else {
+		std::cout << "Target: " << procName << std::endl;
+		std::cout << "Process: " << procName << " (pid " << std::to_string(pid) << ")" << std::endl;
+		}
+	}
+	
+
+	
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    // The above little handle opener is currently a somwehat "agressive" flag, since it
+    // Requests read access directly to the process' actual memory. This can get us rejected if called
+    // on a very high privilege process, such as lsass.exe This means that we can't read the memory
+    // even WITH SeDebugPrivilege enabled. Windows doesn't want ya sneaking around in that!
+    // So for that reason, I've added  a fallback that only requests limited memory access, 
+    // which should hopefully allow us to read some informatoin about hte process
+    if (!hProcess && GetLastError() == ERROR_ACCESS_DENIED) {
+        // This lets us know if the error was denied specifically for access reasons. THis will initiate our little fallback.
+         hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid); // poor little guy getting limited of his full power
+         // This has been tested and it does let us get info about lsass.exe and even System! Woohoo!
+         // But of course, you need to be running as admin for this to work.
+    }
+    int errorCode = 0;
+    bool queryError = false;
+    if (!hProcess) {
+        errorCode = GetLastError();
+	
+        
+        if (virtualTerminalEnabled) {
+            
+            queryError = true;
+            std::cerr << "\033[1;31mError:\033[0m Could not open process with PID " 
+                      << pid << ". Error code: " << errorCode 
+                      << "\nMaybe it doesn't exist or access is denied." << std::endl;
+
+        } else {
+            queryError = true;
+            std::cerr << "Error: Could not open process with PID " 
+                      << pid << ". Error code: " << errorCode 
+                      << "\nMaybe it doesn't exist or access is denied." << std::endl;
+                
+        }
+        if (queryError) {
+        PrintErrorHints(errorCode, hshot);
+    }
+        
+        
+    }
+
+     
+    char exePath[MAX_PATH] = {0};
+    DWORD size = MAX_PATH;
+        
+    if (QueryFullProcessImageNameA(hProcess, 0, exePath, &size)) {
+        if (virtualTerminalEnabled) {
+            std::cout << "\033[34mExecutable Path:\033[0m " << exePath << std::endl;
+        } else {
+            std::cout << "Executable Path: " << exePath << std::endl;
+        }
+    } else {
+        
+        errorCode = GetLastError();
+        if (virtualTerminalEnabled) {
+            queryError = true;
+            std::cerr << "\033[1;31mError:\033[0m Unable to query executable path. Error code: " 
+                      << errorCode 
+                      << "\n Maybe Access is Denied or the process is running entirely in RAM." << std::endl;
+        } else {
+            queryError = true;
+            std::cerr << "Error: Unable to query executable path. Error code: " 
+                      << errorCode 
+                      << "\n Maybe Access is Denied or the process is running entirely in RAM." << std::endl;
+        }
+        if (queryError) {
+        PrintErrorHints(errorCode, hshot);
+        // it might seem like overkill to call the function every time there's an error,
+        // but if you remember we have a fallback for opening processes, so there are multiple
+        // places where an error can occur.
+        // for example, when testing this, the hint for error 5 (access denied) didn't show up
+        // since immediately after it was overwritten by error code 6 (valid but insufficient permissions) created by the fallback
+        // with the limited process info
+    }
+
+            
+        }
+
+        // Use our little lookup table to give hints for specific errors
+        auto user = GetUserNameFromProcess(pid); // dang it dude it feels like such a war crime using auto in c++ 😭✌️
+        if (user.has_value()) {
+            if (virtualTerminalEnabled) {
+             std::cout << "\033[34mUser\033[0m: " << WideToString(user.value()) << std::endl;
+            } else {
+                std::cout << "User: " << WideToString(user.value()) << std::endl;
+            }
+            
+        } else {
+           if (virtualTerminalEnabled) {
+            std::cout << "\033[1;34mUser\033[0m: \033[1;31mN/A (Failed to access info)\033[0m" << std::endl; 
+        } else {
+            std::cout << "User: N/A (Failed to access info)" << std::endl;
+        }
+        }
+
+        std::string command = GetCommandLine(hProcess);
+
+        
+            if (virtualTerminalEnabled) {
+                 std::cout << "\033[1;32mCommand\033[0m: " << command << std::endl;
+            } else {
+                    std::cout << "Command: " << command << std::endl;
+                }
+        std::string workdir = GetWorkingDir(hProcess);
+	
+
+        
+            if (virtualTerminalEnabled) {
+                 std::cout << "\033[1;32mWorking Directory\033[0m: " << workdir << std::endl;
+            } else {
+                    std::cout << "Working Directory: " << workdir << std::endl;
+                }
+
+			// to get memory usage,
+	// we have to use psapi.h
+	// the metric we want is WorkingSetSize because the api spits out a bunch of other metrics we don't need
+	// hopefully this doesn't tank performance for yet another api call
+	// the command and working dir don't affect it because PEB walks take like 5 ms idk
+	// reference: https://learn.microsoft.com/en-us/windows/win32/psapi/collecting-memory-usage-information-for-a-process
+
+	PROCESS_MEMORY_COUNTERS pmc;
+	if ( GetProcessMemoryInfo( hProcess, &pmc, sizeof(pmc)) ) {
+		// in the original snippet from windows
+		// THE BRACKET IS AFTER THE IF IN THE LINE DOWN
+		// i can't be talking about code organization but MICROSOFT WHAT
+	size_t RAM = pmc.WorkingSetSize; //should be fine for this, unless you have like 10 exabytes of RAM for a single process somehow
+									
+std::string FRAM = ""; // fram means formatted ram, i'm so creative at var naming
+		if (RAM < 1000) {
+			// if less than 1000 bytes (which is a kilobyte) then just return bytes
+			FRAM = std::to_string(RAM) + " B";
+				}
+		else if (RAM < 1000ULL * 1000) { 
+			
+			FRAM = std::to_string(RAM / 1000) + " KB";
+		}
+		else if (RAM < 1000ULL * 1000 * 1000) { 
+			
+			FRAM = std::to_string(RAM /( 1000ULL * 1000)) + " MB";
+		}
+		else if (RAM < 1000ULL * 1000 * 1000 * 1000) {
+			FRAM = std::to_string(RAM /( 1000ULL * 1000 * 1000)) + " GB";
+		}
+		else {
+			FRAM = std::to_string(RAM /( 1000ULL * 1000 * 1000 * 1000)) + " TB";
+			// if someone actually reaches this i'm concerned
+		}
+			
+			
+			
+		
+		if (virtualTerminalEnabled) {
+                 std::cout << "\033[1;32mRAM Usage\033[0m: " << FRAM << std::endl;
+			// I know RAM is technically a "nerdy tech term" or whatever and it'd be more logical
+		// to say "memory" but I feel like at this point everyone knows what RAM means
+		// especially with the RAM shortage, it should be ingrained in their brains
+		
+            } else {
+                    std::cout << "RAM Usage: " << FRAM << std::endl;
+                }
+	}
+		
+    
+                
+        
+        
+        
+        
+        
+
+         
+         // TODO: add color text
+         
+        if (virtualTerminalEnabled) {
+            std::cout << "\n\033[1;35mWhy It Exists:\033[0m\n";
+        } else {
+            std::cout << "\nWhy It Exists:\n";
+        }
+        PrintAncestry(pid, hshot, pidMap);
+
+		FindProcessPorts(pid);
+	
+
+		
+		
+
+        if (virtualTerminalEnabled) {
+            std::cout << "\n\033[1;35mStarted:\033[0m " << GetReadableFileTime(pid, pidMap) << std::endl;
+        } else {
+            std::cout << "\nStarted: " << GetReadableFileTime(pid, pidMap) << std::endl;
+        }
+
+        if (pids.size() > 1) {
+            if (virtualTerminalEnabled) {
+                std::cout << "\033[1;35mRelated Processes:\033[0m\n";
+            } else {
+                std::cout << "Related Processes:\n";
+            }
+            
+            for (size_t i = 1; i < pids.size(); i++) {
+                std::string relatedProcName = names[i];
+                if (virtualTerminalEnabled) {
+                    std::cout << "\t\033[36m" << relatedProcName << "\033[90m (PID " << pids[i] << ")\033[0m\n";
+                } else {
+                    std::cout << "\t" << relatedProcName << " (PID " << pids[i] << ")\n";
+                }
+                
+            }
+        }
+    /*
+    TODO: 
+    This definitely needs a lot more details to be complete like witr. Unfortunately, windows needs even more shenanigans and a whole
+    lotta more code and admin access to get the same details. I will explain this some other day.
+
+    This is the output from witr for reference:
+    Target      : node
+
+    Process     : node (pid 14233)
+    User        : pm2
+    Command     : node index.js
+    Started     : 2 days ago (Mon 2025-02-02 11:42:10 +05:30)
+    Restarts    : 1
+
+    Why It Exists :
+    systemd (pid 1) → pm2 (pid 5034) → node (pid 14233)
+
+    Source      : pm2
+
+    Working Dir : /opt/apps/expense-manager
+    Git Repo    : expense-manager (main)
+    Listening   : 127.0.0.1:5001
+    */
+
+    CloseHandle(hProcess);
+    
+	}
 }
 
 struct ProcInfos {
@@ -2107,6 +2374,10 @@ int main(int argc, char* argv[]) {
         if (i == 0 && args.size() > 1) {
             continue; 
         }
+		
+		if (args[i] == "-a" || args[i] == "-all") {
+		s.all = true;
+		}
         
          
          
@@ -2131,6 +2402,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "  \033[1;33m--port <port>\033[0m    Specify the port to check" << std::endl;
                 std::cout << "  \033[1;33m--pid <pid>\033[0m      Specify the PID to check" << std::endl;
                 std::cout << "  \033[1;33m <name>\033[0m          Specify the process name to check" << std::endl;
+				std::cout << "  \033[1;33m-a, --all\033[0m        Performs more detailed lookup " << std::endl;
                  
             } else {
                 if (IsProcessElevated()) {
@@ -2145,7 +2417,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "  --port <port>    Specify the port to check" << std::endl;
                 std::cout << "  --pid <pid>      Specify the PID to check" << std::endl;
                 std::cout << "   <name>          Specify the process name to check" << std::endl;
-                
+                std::cout << "  -a, --all        Performs more detailed lookup" << std::endl;
 
             }
             return 0; // exit after printing help because it might try to process -help as a process name otherwise
