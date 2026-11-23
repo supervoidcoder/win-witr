@@ -51,6 +51,16 @@ Also, we might split the code into multiple files later on, but for now it's jus
 
  <sub>~~You know what else is m~~</sub>
 
+### System Requirements
+
+To compile:
+- At least Windows 10 Anniversary Update or later
+- MSVC Visual Studio 2022 (or newer)
+However, you can run this on older computers. To run:
+- At least Windows Vista or Server 2008 (though I could probably get it to work on XP SP2 later if I really wanted to) if compiled with -DPSAPI_VERSION=1 and linked psapi.lib
+- If you don't, then it will only work on Windows 7 or Windows Server 2008 R2
+
+(I have not tested these yet, these are based on when the APIs used were introduced)
 
 
 
